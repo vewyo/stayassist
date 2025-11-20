@@ -1,24 +1,107 @@
 version: "3.1"
 
+intents:
+  - user_intent_greet:
+      description: >
+        The guest greets the assistant or generally asks for help from StayAssist Amsterdam.
+  - user_intent_book_room:
+      description: >
+        The guest wants to book or reserve a room, provide stay details, or continue the booking form.
+  - user_intent_cancel_booking:
+      description: >
+        The guest wants to cancel an existing booking and may provide a booking number.
+  - user_intent_facility_information:
+      description: >
+        The guest asks about room prices, facilities, pool/parking, meal times, or gym hours at StayAssist Amsterdam.
+
 slots:
-  recipient:
+  arrival_date:
     type: text
     mappings:
       - type: from_llm
-  amount:
-    type: float
+  nights:
+    type: text
     mappings:
       - type: from_llm
+  rooms:
+    type: text
+    mappings:
+      - type: from_llm
+  guests:
+    type: text
+    mappings:
+      - type: from_llm
+  payment_option:
+    type: text
+    mappings:
+      - type: from_llm
+  email:
+    type: text
+    mappings:
+      - type: from_llm
+  first_name:
+    type: text
+    mappings:
+      - type: from_llm
+  last_name:
+    type: text
+    mappings:
+      - type: from_llm
+  payment_confirmation:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: from_llm
+  booking_number:
+    type: text
+    mappings:
+      - type: from_llm
+  facility_topic:
+    type: text
+    mappings:
+      - type: from_llm
+  booking_reference:
+    type: text
+    influence_conversation: false
+    mappings:
+      - type: custom
 
 responses:
-  utter_ask_recipient:
-    - text: "Who would you like to send money to?"
+  utter_greet_and_offer_help:
+    - text: "Welcome to StayAssist Amsterdam, our only hotel location. How can I help with your stay in Amsterdam today?"
 
-  utter_ask_amount:
-    - text: "How much money would you like to send?"
+  utter_ask_arrival_date:
+    - text: "What is your desired arrival date?"
 
-  utter_transfer_complete:
-    - text: "All done. {amount} has been sent to {recipient}."
+  utter_ask_nights:
+    - text: "How many nights would you like to stay?"
+
+  utter_ask_rooms:
+    - text: "How many rooms should I reserve for you?"
+
+  utter_ask_guests:
+    - text: "How many guests will be staying?"
+
+  utter_ask_payment_option:
+    - text: "Would you like to pay at the front desk or complete the payment online now?"
+
+  utter_ask_email:
+    - text: "Could you share the email address for the reservation confirmation?"
+
+  utter_ask_first_name:
+    - text: "What's the first name to put on the reservation?"
+
+  utter_ask_last_name:
+    - text: "And the last name?"
+
+  utter_ask_payment_confirmation:
+    - text: "Let me know once the payment is completed so I can finalize the booking."
+
+  utter_ask_booking_number:
+    - text: "Please provide the booking number you would like me to cancel."
+
+  utter_ask_facility_topic:
+    - text: "Which facility or room detail would you like to know more about (pool, parking, meals, rooms, suite, gym)?"
 
   utter_free_chitchat_response:
     - text: "placeholder"
@@ -26,10 +109,20 @@ responses:
         rephrase: True
         rephrase_prompt: |
           The following is a conversation with an AI assistant built with Rasa.
-          The assistant can help the user transfer money.
-          The assistant is helpful, creative, clever, and very friendly.
-          The user is making small talk, and the assistant should respond, keeping things light.
+          The assistant represents StayAssist Amsterdam, a single-location hotel in Amsterdam.
+          The assistant helps with room bookings, payments at the desk, online payments, cancellations using booking numbers, and facility questions (pool hours, parking fees, breakfast/lunch/dinner times, gym availability, and room amenities/prices).
+          The assistant never asks the guest which city or neighborhood they prefer, because the only property is StayAssist Amsterdam.
+          The assistant is warm, concise, and confident about the hotel offerings.
+          The user is making small talk, and the assistant should respond, keeping things light while reinforcing that all services relate to StayAssist Amsterdam.
           Context / previous conversation with the user:
           {{history}}
           {{current_input}}
           Suggested AI Response:
+
+actions:
+  - action_confirm_reservation_hold
+  - action_generate_booking_number
+  - action_send_payment_link
+  - action_confirm_payment_received
+  - action_cancel_booking
+  - action_answer_facility_question

@@ -106,14 +106,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const voiceIndicator = document.querySelector('.voice-indicator');
     const voiceControls = document.querySelector('.voice-controls');
     const clearButton = document.querySelector('.btn-clear');
+    const humanSupportButton = document.querySelector('.cta-human');
+
+    const RESET_HISTORY_ON_LOAD = true;
 
     // State
     let isTyping = false;
     let conversationContext = {};
+    let hasConversationStarted = false;
 
     // Initialize
     chatInput.focus();
     scrollToBottom();
+    resetConversationState();
     initChatbot();
 
     // Event Listeners
@@ -206,11 +211,18 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initChatbot() {
         try {
             console.log('Initializing Chatbot...');
-            // Load previous conversations for context
-            const conversations = await loadRecentConversations();
-            conversations.forEach((conversation) => {
-                addMessageToChat(conversation.sender, conversation.message, Date.parse(conversation.timestamp), false);
-            })
+            
+            if (RESET_HISTORY_ON_LOAD) {
+                await resetStoredConversations(true);
+                conversationContext = {};
+                console.log('Cleared stored conversations for a fresh session.');
+            } else {
+                // Load previous conversations for context
+                const conversations = await loadRecentConversations();
+                conversations.forEach((conversation) => {
+                    addMessageToChat(conversation.sender, conversation.message, Date.parse(conversation.timestamp), false);
+                });
+            }
 
             console.log('Chatbot initialization complete');
         } catch (error) {
@@ -268,6 +280,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Current timestamp
         const timestamp = new Date();
+
+        // Mark that the conversation has started so CTA can appear
+        markConversationStarted();
 
         // Add user message to chat
         addMessageToChat('user', message, timestamp);
@@ -551,22 +566,31 @@ document.addEventListener('DOMContentLoaded', () => {
             messages.forEach(msg => msg.remove());
 
             // Clear conversations from database
-            clearConversationsFromDB();
+            resetStoredConversations();
 
             // Reset conversation context
             conversationContext = {};
+            resetConversationState();
         }
     }
 
     /**
      * Clear conversations from the database
      */
-    async function clearConversationsFromDB() {
+    async function resetStoredConversations(silent = false) {
         try {
-            await window.DB.db.conversations.clear();
-            console.log('Deleted all conversations from database');
+            if (window.DB?.db?.conversations) {
+                await window.DB.db.conversations.clear();
+                if (!silent) {
+                    console.log('Deleted all conversations from database');
+                }
+            } else if (!silent) {
+                console.warn('Database not initialized, nothing to clear.');
+            }
         } catch (error) {
-            console.error('Error clearing conversations from database:', error);
+            if (!silent) {
+                console.error('Error clearing conversations from database:', error);
+            }
         }
     }
 
@@ -576,50 +600,67 @@ document.addEventListener('DOMContentLoaded', () => {
     function scrollToBottom() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
+    // Helper function for LLM action buttons to send messages to Rasa
+    function sendToRasa(message) {
+        // Create a timestamp
+        const timestamp = new Date();
+
+        // Mark conversation started if triggered via helper button
+        markConversationStarted();
+        
+        // Show message in chat
+        addMessageToChat('user', message, timestamp);
+        
+        // Show typing indicator
+        showTypingIndicator();
+        
+        // Send to Rasa
+        fetch('/api/send_message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: message, context: conversationContext })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            const responseTimestamp = new Date();
+            hideTypingIndicator();
+            
+            // Process response
+            handleRasaResponse(data, responseTimestamp);
+        })
+        .catch(error => {
+            console.error('Error communicating with Rasa:', error);
+            hideTypingIndicator();
+            addMessageToChat('bot', 'Sorry, I encountered an error processing that request.', new Date());
+        });
+    }
+
+    function markConversationStarted() {
+        if (hasConversationStarted) return;
+        hasConversationStarted = true;
+        setHumanButtonVisibility(true);
+    }
+
+    function resetConversationState() {
+        hasConversationStarted = false;
+        setHumanButtonVisibility(false);
+    }
+
+    function setHumanButtonVisibility(visible) {
+        if (!humanSupportButton) return;
+        humanSupportButton.style.display = visible ? 'block' : 'none';
+    }
+
+    window.sendToRasa = sendToRasa;
 });
 
 
 // Make the function available globally
 window.speakText = speakText;
-
-// Helper function for LLM action buttons to send messages to Rasa
-function sendToRasa(message) {
-    // Create a timestamp
-    const timestamp = new Date();
-    
-    // Show message in chat
-    addMessageToChat('user', message, timestamp);
-    
-    // Show typing indicator
-    showTypingIndicator();
-    
-    // Send to Rasa
-    fetch('/api/send_message', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ message: message, context: conversationContext })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        const responseTimestamp = new Date();
-        hideTypingIndicator();
-        
-        // Process response
-        handleRasaResponse(data, responseTimestamp);
-    })
-    .catch(error => {
-        console.error('Error communicating with Rasa:', error);
-        hideTypingIndicator();
-        addMessageToChat('bot', 'Sorry, I encountered an error processing that request.', new Date());
-    });
-}
-
-// Make sendToRasa available globally
-window.sendToRasa = sendToRasa;

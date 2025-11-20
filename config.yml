@@ -1,13 +1,25 @@
 recipe: default.v1
 language: en
 pipeline:
-- name: CompactLLMCommandGenerator
-  llm:
-    model_group: rasa_command_generation_model
-  flow_retrieval:
-    active: false
+  - name: RegexMessageHandler
+  - name: LLMIntentClassifier
+    llm:
+      model_group: stayassist_intent_classifier
+    prompt_template: |
+      You are the intent router for StayAssist Amsterdam, a single-location boutique hotel.
+      Choose the best matching intent from this list:
+      1. user_intent_greet – the guest greets, starts a chat, or asks for general help.
+      2. user_intent_book_room – the guest wants to book a room or provide reservation details.
+      3. user_intent_cancel_booking – the guest wants to cancel an existing booking using their booking number.
+      4. user_intent_facility_information – the guest asks about prices, facilities, pool/parking hours, meals, or room amenities.
+      Respond only with the intent name. If nothing fits, respond with "nlu_fallback".
+  - name: CompactLLMCommandGenerator
+    llm:
+      model_group: rasa_command_generation_model
+    flow_retrieval:
+      active: false
 
 policies:
-- name: FlowPolicy
+  - name: FlowPolicy
 #  - name: EnterpriseSearchPolicy
 assistant_id: 20250827-154803-coal-resin

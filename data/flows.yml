@@ -1,8 +1,53 @@
 flows:
-  transfer_money:
-    description: Help users send money to friends and family.
+  greet:
+    description: Welcome guests and ask how the assistant can help them.
+    intent: user_intent_greet
     steps:
-      - collect: recipient
-      - collect: amount
-        description: the number of US dollars to send
-      - action: utter_transfer_complete
+      - action: utter_greet_and_offer_help
+  book_room:
+    description: Collect all information required to create a room reservation.
+    intent: user_intent_book_room
+    steps:
+      - collect: arrival_date
+        description: "ask for the desired arrival date"
+      - collect: nights
+        description: "ask for the number of nights"
+      - collect: rooms
+        description: "ask for the number of rooms"
+      - collect: guests
+        description: "ask for the number of guests"
+      - collect: payment_option
+        description: "ask whether the guest wants to pay at the desk or online"
+  book_room_pay_at_desk:
+    description: Handle bookings when the guest prefers to pay at the front desk.
+    steps:
+      - collect: email
+        description: "ask for the guest's email address"
+      - collect: first_name
+        description: "ask for the guest's first name"
+      - collect: last_name
+        description: "ask for the guest's last name"
+      - action: action_confirm_reservation_hold
+      - action: action_generate_booking_number
+  book_room_pay_online:
+    description: Handle bookings where the guest chooses to pay online.
+    steps:
+      - action: action_send_payment_link
+      - collect: payment_confirmation
+        description: "wait until the guest confirms that payment was made"
+      - action: action_confirm_payment_received
+      - action: action_generate_booking_number
+  cancel_booking:
+    description: Allow guests to cancel an existing reservation when they provide the booking number.
+    intent: user_intent_cancel_booking
+    steps:
+      - collect: booking_number
+        description: "ask for the booking number the guest wants to cancel"
+      - action: action_cancel_booking
+  facility_information:
+    description: Provide fixed information about on-site facilities such as pool hours, parking, and meals.
+    intent: user_intent_facility_information
+    steps:
+      - collect: facility_topic
+        description: "ask which facility the guest needs information about (pool, parking, breakfast, lunch, dinner, gym)"
+      - action: action_answer_facility_question
