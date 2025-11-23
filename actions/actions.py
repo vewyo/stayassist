@@ -226,10 +226,10 @@ class ActionValidateDate(Action):
                         "Could you provide it in a format like '15 February 2024', '15/02/2024', or '2024-02-15'?"
                     )
                 )
-            # Clear the slot so the flow will loop back to ask again
-            return [SlotSet("arrival_date", None)]
+            # Clear the slot and set date_valid to false so the flow will loop back
+            return [SlotSet("arrival_date", None), SlotSet("date_valid", False)]
 
-        return []
+        return [SlotSet("date_valid", True)]
 
 
 class ActionValidateNights(Action):

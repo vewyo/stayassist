@@ -100,6 +100,11 @@ slots:
     influence_conversation: false
     mappings:
       - type: custom
+  date_valid:
+    type: bool
+    initial_value: false
+    mappings:
+      - type: custom
 
 responses:
   utter_greet_and_offer_help:
