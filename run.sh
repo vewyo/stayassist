@@ -36,13 +36,13 @@ RASA_PID=$!
 # Wait a moment to ensure Rasa server has started
 sleep 10
 
-# Start Flask server in background
+# Start Flask server in background on port 3000
 echo "Starting Flask server..."
-flask run &
+flask run --port 3000 &
 FLASK_PID=$!
 
 echo "Chatbot servers are running!"
-echo "Access the application at http://localhost:5000"
+echo "Access the application at http://localhost:3000"
 echo "Press Ctrl+C to stop the servers."
 
 # Wait for user to press Ctrl+C
