@@ -23,13 +23,20 @@ slots:
     mappings:
       - type: from_llm
         prompt: |
-          Extract ONLY a valid arrival date from the user's message. 
+          Extract ONLY a valid arrival date from the user's message.
           The user is being asked for their arrival date.
-          - If the message contains a date (like "15 February 2024", "15/02/2024", "2024-02-15"), extract it.
-          - If the message contains only a month name (like "December"), that is NOT a complete date - return null.
-          - If the message contains nonsense like "66 december" or invalid dates, return null.
-          - If the message is clearly not a date (like "no", "I don't know", numbers without context), return null.
-          Return only the date in a standard format, or null if no valid date can be extracted.
+
+          CRITICAL VALIDATION RULES - return null if ANY of these apply:
+          - February can only have days 1-28 (or 29 in leap years). "30 february", "56 february" = null
+          - Months with 30 days (Apr, Jun, Sep, Nov) cannot have day 31. "31 april" = null
+          - No month can have a day greater than 31. "45 december", "99 january" = null
+          - Day must be a positive number between 1-31. "0 march", "-5 june" = null
+          - Only a month name without a day is NOT a complete date. "December" alone = null
+          - Gibberish or non-date text = null
+
+          ONLY extract if the date is actually valid and exists in the calendar.
+          If valid, return the date in format "DD Month YYYY" or "DD/MM/YYYY".
+          If invalid or missing, return null.
   nights:
     type: text
     mappings:
