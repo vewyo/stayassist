@@ -12,9 +12,9 @@ flows:
       - id: validate_date
         action: action_validate_date
         next:
-          - if: not slots.date_valid
-            then: ask_arrival_date
-          - else: ask_nights
+          - if: slots.date_valid
+            then: ask_nights
+          - then: ask_arrival_date
       - id: ask_nights
         collect: nights
         description: "ask for the number of nights, convert words to numbers, handle invalid numbers"
