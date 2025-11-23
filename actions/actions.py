@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Text
 
 from rasa_sdk import Action, Tracker
-from rasa_sdk.events import SlotSet, ActiveLoop
+from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
 
@@ -226,9 +226,9 @@ class ActionValidateDate(Action):
                         "Could you provide it in a format like '15 February 2024', '15/02/2024', or '2024-02-15'?"
                     )
                 )
-            # Clear the slot and reactivate the loop to ask again
-            return [SlotSet("arrival_date", None), ActiveLoop("book_room")]
-        
+            # Clear the slot so the flow will loop back to ask again
+            return [SlotSet("arrival_date", None)]
+
         return []
 
 
@@ -262,7 +262,7 @@ class ActionValidateNights(Action):
                     "Could you tell me how many nights you'd like to stay?"
                 )
             )
-            return [SlotSet("nights", None), ActiveLoop("book_room")]
+            return [SlotSet("nights", None)]
         
         is_valid, error_msg, parsed_value = _validate_positive_number(nights, "number of nights", allow_zero=False)
         
@@ -273,7 +273,7 @@ class ActionValidateNights(Action):
                     "For example, you could say 'one night', 'two nights', or just '1' or '2'."
                 )
             )
-            return [SlotSet("nights", None), ActiveLoop("book_room")]
+            return [SlotSet("nights", None)]
         
         # Check for unreasonably high numbers
         if parsed_value and parsed_value > 365:
@@ -313,7 +313,7 @@ class ActionValidateRooms(Action):
                     "For example, you could say 'one room', 'two rooms', or just '1' or '2'."
                 )
             )
-            return [SlotSet("rooms", None), ActiveLoop("book_room")]
+            return [SlotSet("rooms", None)]
         
         return [SlotSet("rooms", str(int(parsed_value)))]
 
@@ -343,7 +343,7 @@ class ActionValidateGuests(Action):
                     "For example, you could say 'one guest', 'two guests', or just '1' or '2'."
                 )
             )
-            return [SlotSet("guests", None), ActiveLoop("book_room")]
+            return [SlotSet("guests", None)]
         
         return [SlotSet("guests", str(int(parsed_value)))]
 

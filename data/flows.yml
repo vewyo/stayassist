@@ -6,19 +6,44 @@ flows:
   book_room:
     description: Collect all information required to create a room reservation.
     steps:
-      - collect: arrival_date
+      - id: ask_arrival_date
+        collect: arrival_date
         description: "ask for the desired arrival date, handle typos and invalid dates gracefully"
       - action: action_validate_date
-      - collect: nights
+      - id: check_date_valid
+        next:
+          - if: slots.arrival_date is null
+            then: ask_arrival_date
+          - else: ask_nights
+      - id: ask_nights
+        collect: nights
         description: "ask for the number of nights, convert words to numbers, handle invalid numbers"
       - action: action_validate_nights
-      - collect: rooms
+      - id: check_nights_valid
+        next:
+          - if: slots.nights is null
+            then: ask_nights
+          - else: ask_rooms
+      - id: ask_rooms
+        collect: rooms
         description: "ask for the number of rooms, convert words to numbers, handle invalid numbers"
       - action: action_validate_rooms
-      - collect: guests
+      - id: check_rooms_valid
+        next:
+          - if: slots.rooms is null
+            then: ask_rooms
+          - else: ask_guests
+      - id: ask_guests
+        collect: guests
         description: "ask for the number of guests, convert words to numbers, handle invalid numbers"
       - action: action_validate_guests
-      - collect: payment_option
+      - id: check_guests_valid
+        next:
+          - if: slots.guests is null
+            then: ask_guests
+          - else: ask_payment
+      - id: ask_payment
+        collect: payment_option
         description: "ask whether the guest wants to pay at the desk or online"
   book_room_pay_at_desk:
     description: Handle bookings when the guest prefers to pay at the front desk.
