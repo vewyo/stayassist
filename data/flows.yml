@@ -9,8 +9,8 @@ flows:
       - id: ask_arrival_date
         collect: arrival_date
         description: "ask for the desired arrival date, handle typos and invalid dates gracefully"
-      - action: action_validate_date
-      - id: check_date_valid
+      - id: validate_date
+        action: action_validate_date
         next:
           - if: slots.arrival_date is null
             then: ask_arrival_date
@@ -18,8 +18,8 @@ flows:
       - id: ask_nights
         collect: nights
         description: "ask for the number of nights, convert words to numbers, handle invalid numbers"
-      - action: action_validate_nights
-      - id: check_nights_valid
+      - id: validate_nights
+        action: action_validate_nights
         next:
           - if: slots.nights is null
             then: ask_nights
@@ -27,8 +27,8 @@ flows:
       - id: ask_rooms
         collect: rooms
         description: "ask for the number of rooms, convert words to numbers, handle invalid numbers"
-      - action: action_validate_rooms
-      - id: check_rooms_valid
+      - id: validate_rooms
+        action: action_validate_rooms
         next:
           - if: slots.rooms is null
             then: ask_rooms
@@ -36,8 +36,8 @@ flows:
       - id: ask_guests
         collect: guests
         description: "ask for the number of guests, convert words to numbers, handle invalid numbers"
-      - action: action_validate_guests
-      - id: check_guests_valid
+      - id: validate_guests
+        action: action_validate_guests
         next:
           - if: slots.guests is null
             then: ask_guests
