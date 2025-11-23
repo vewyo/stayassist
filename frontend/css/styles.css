@@ -250,9 +250,10 @@ body {
 /* Message Styles */
 .message {
     display: flex;
-    gap: 15px;
+    gap: 12px;
     max-width: 85%;
     animation: fadeIn 0.3s ease-in-out;
+    margin-bottom: 12px;
 }
 
 @keyframes fadeIn {
@@ -269,6 +270,7 @@ body {
 
 .bot-message {
     align-self: flex-start;
+    flex-direction: row;
 }
 
 .user-message {
@@ -279,12 +281,15 @@ body {
 .message-avatar {
     width: 38px;
     height: 38px;
+    min-width: 38px;
+    min-height: 38px;
     border-radius: 50%;
     background-color: var(--primary-light);
     color: var(--primary-color);
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 .user-message .message-avatar {
@@ -300,6 +305,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 5px;
+    flex: 1;
+    min-width: 0;
 }
 
 .message-text {
@@ -307,6 +314,8 @@ body {
     padding: 12px 15px;
     border-radius: var(--border-radius);
     box-shadow: var(--shadow);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .user-message .message-text {

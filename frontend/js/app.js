@@ -321,15 +321,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const responseTimestamp = new Date();
                 hideTypingIndicator();
 
-                // Check if data is in the expected format
-                if (data.fallback_response) {
-                    // Handle fallback response (error case)
-                    addMessageToChat('bot', data.fallback_response[0].text, responseTimestamp);
-                    return;
-                }
+                try {
+                    // Check if data is in the expected format
+                    if (data.fallback_response) {
+                        // Handle fallback response (error case)
+                        if (Array.isArray(data.fallback_response) && data.fallback_response.length > 0) {
+                            addMessageToChat('bot', data.fallback_response[0].text || 'I apologize, but I encountered an issue processing your request.', responseTimestamp);
+                        } else {
+                            addMessageToChat('bot', 'I apologize, but I encountered an issue processing your request. Please try again.', responseTimestamp);
+                        }
+                        return;
+                    }
 
-                // Process Rasa response
-                handleRasaResponse(data, responseTimestamp);
+                    // Process Rasa response
+                    handleRasaResponse(data, responseTimestamp);
+                } catch (error) {
+                    console.error('Error processing Rasa response:', error);
+                    addMessageToChat('bot', 'I apologize, but I encountered an issue processing your request. Please try again.', responseTimestamp);
+                }
             })
             .catch(error => {
                 const errorTimestamp = new Date();
@@ -345,61 +354,126 @@ document.addEventListener('DOMContentLoaded', () => {
      * @param {Date} timestamp - Timestamp when response was received
      */
     function handleRasaResponse(response, timestamp) {
-        console.log("Processing response:", response);
-        
-        // Check if response is an array (direct messages)
-        if (Array.isArray(response)) {
-            response.forEach(message => {
-                if (message.text) {
-                    addMessageToChat('bot', message.text, timestamp);
-
-                    // Save bot response to database
-                    window.DB.saveConversation({
-                        sender: 'bot',
-                        message: message.text,
-                        context: conversationContext,
-                        timestamp: timestamp.toISOString()
-                    });
-                }
-            });
+        if (!response) {
+            console.error('Empty response received');
+            addMessageToChat('bot', 'I apologize, but I received an empty response. Please try again.', timestamp);
             return;
         }
-        
-        // Handle messages
-        if (response.messages && response.messages.length > 0) {
-            response.messages.forEach(message => {
-                if (message.text) {
-                    addMessageToChat('bot', message.text, timestamp);
 
-                    // Save bot response to database
+        console.log("Processing response:", response);
+        
+        // Track seen messages to prevent duplicates
+        const seenMessages = new Set();
+        let messageAdded = false;
+        let allMessages = [];
+        
+        // Collect all messages first
+        if (Array.isArray(response)) {
+            response.forEach(message => {
+                if (message && message.text && typeof message.text === 'string' && message.text.trim()) {
+                    allMessages.push(message.text.trim());
+                }
+            });
+        } else if (response.messages && Array.isArray(response.messages)) {
+            response.messages.forEach(message => {
+                if (message && message.text && typeof message.text === 'string' && message.text.trim()) {
+                    allMessages.push(message.text.trim());
+                }
+            });
+        }
+        
+        // Filter out duplicate or very similar messages
+        // If we have multiple messages and the first one is a greeting, only show the first one
+        if (allMessages.length > 1) {
+            const firstMessage = allMessages[0].toLowerCase();
+            // Check if first message is a greeting
+            if (firstMessage.includes('welcome') || firstMessage.includes('how can i assist') || firstMessage.includes('how can i help')) {
+                // Only show the first message (the greeting)
+                allMessages = [allMessages[0]];
+            } else {
+                // For non-greetings, filter exact duplicates
+                const uniqueMessages = [];
+                allMessages.forEach(msg => {
+                    if (!seenMessages.has(msg)) {
+                        seenMessages.add(msg);
+                        uniqueMessages.push(msg);
+                    }
+                });
+                allMessages = uniqueMessages;
+            }
+        }
+        
+        // Display the filtered messages
+        allMessages.forEach(messageText => {
+            addMessageToChat('bot', messageText, timestamp);
+            messageAdded = true;
+
+            // Save bot response to database
+            try {
+                if (window.DB && window.DB.saveConversation) {
                     window.DB.saveConversation({
                         sender: 'bot',
-                        message: message.text,
+                        message: messageText,
                         context: response.context || conversationContext,
                         timestamp: timestamp.toISOString()
                     });
                 }
-            });
-        }
+            } catch (dbError) {
+                console.error('Error saving to database:', dbError);
+            }
+        });
+        
+        if (messageAdded) {
+            // Process actions from Rasa
+            if (response.actions && Array.isArray(response.actions) && response.actions.length > 0) {
+                response.actions.forEach(action => {
+                    try {
+                        executeAction(action, response.context);
+                    } catch (actionError) {
+                        console.error('Error executing action:', actionError);
+                    }
+                });
+            }
 
+            // Update conversation context
+            if (response.context && typeof response.context === 'object') {
+                try {
+                    conversationContext = {
+                        ...conversationContext,
+                        ...response.context
+                    };
+                } catch (contextError) {
+                    console.error('Error updating context:', contextError);
+                }
+            }
+            return;
+        }
+        
         // Process actions from Rasa
-        if (response.actions && response.actions.length > 0) {
+        if (response.actions && Array.isArray(response.actions) && response.actions.length > 0) {
             response.actions.forEach(action => {
-                executeAction(action, response.context);
+                try {
+                    executeAction(action, response.context);
+                } catch (actionError) {
+                    console.error('Error executing action:', actionError);
+                }
             });
         }
 
         // Update conversation context
-        if (response.context) {
-            conversationContext = {
-                ...conversationContext,
-                ...response.context
-            };
+        if (response.context && typeof response.context === 'object') {
+            try {
+                conversationContext = {
+                    ...conversationContext,
+                    ...response.context
+                };
+            } catch (contextError) {
+                console.error('Error updating context:', contextError);
+            }
         }
         
         // If no response was processed, show a fallback message
-        if ((!response.messages || response.messages.length === 0) && 
-            (!response.actions || response.actions.length === 0)) {
+        if (!messageAdded && (!response.actions || !Array.isArray(response.actions) || response.actions.length === 0)) {
             addMessageToChat('bot', "I'm processing your request. Please give me a moment.", timestamp);
         }
     }
