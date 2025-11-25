@@ -224,11 +224,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            // Show automatic greeting when chatbot starts (only if no previous messages)
+            setTimeout(() => {
+                const existingMessages = document.querySelectorAll('.message');
+                if (existingMessages.length === 0) {
+                    const greetingTimestamp = new Date();
+                    addMessageToChat('bot', 'Welcome to StayAssist. How can I assist you today?', greetingTimestamp);
+                    
+                    // Save greeting to database
+                    if (window.DB && window.DB.saveConversation) {
+                        window.DB.saveConversation({
+                            sender: 'bot',
+                            message: 'Welcome to StayAssist. How can I assist you today?',
+                            context: conversationContext,
+                            timestamp: greetingTimestamp.toISOString()
+                        });
+                    }
+                }
+            }, 300); // Small delay to ensure everything is initialized
+
             console.log('Chatbot initialization complete');
         } catch (error) {
             console.error('Error initializing Chatbot:', error);
         }
     }
+
 
     /**
      * Load recent conversations from the database
@@ -302,6 +322,23 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show typing indicator
         showTypingIndicator();
 
+        // Reset booking slots in context when starting a new booking
+        const messageLower = message.toLowerCase().trim();
+        const bookingPhrases = ['book a room', 'book room', 'i want to book', 'reserve a room', 'make a reservation', 'reserve', 'booking'];
+        if (bookingPhrases.some(phrase => messageLower.includes(phrase))) {
+            console.log('Detected new booking request, resetting booking slots in frontend context');
+            if (!conversationContext.slots) {
+                conversationContext.slots = {};
+            }
+            conversationContext.slots.guests = null;
+            conversationContext.slots.room_type = null;
+            conversationContext.slots.arrival_date = null;
+            conversationContext.slots.departure_date = null;
+            conversationContext.slots.nights = null;
+            conversationContext.slots.rooms = null;
+            conversationContext.slots.payment_option = null;
+        }
+
         // Send message to Python backend and get response
         fetch('/api/send_message', { 
             method: 'POST',
@@ -318,6 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .then(data => {
                 console.log("Response from Rasa:", data); // Debug: log the response
+                console.log("Response from Rasa (stringified):", JSON.stringify(data, null, 2)); // Full response
                 const responseTimestamp = new Date();
                 hideTypingIndicator();
 
@@ -355,12 +393,21 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function handleRasaResponse(response, timestamp) {
         if (!response) {
-            console.error('Empty response received');
-            addMessageToChat('bot', 'I apologize, but I received an empty response. Please try again.', timestamp);
+            console.log('Empty response received (this might be OK if confirmation was already shown)');
+            // Don't show error message if this is from date confirmation
+            // The confirmation message is already displayed
             return;
         }
 
         console.log("Processing response:", response);
+        console.log("Response messages:", response.messages || response);
+        
+        // Debug: Log each message in detail
+        const messages = response.messages || (Array.isArray(response) ? response : []);
+        messages.forEach((msg, index) => {
+            console.log(`Message ${index}:`, msg);
+            console.log(`Message ${index} json_message:`, msg.json_message);
+        });
         
         // Track seen messages to prevent duplicates
         const seenMessages = new Set();
@@ -370,19 +417,81 @@ document.addEventListener('DOMContentLoaded', () => {
         // Collect all messages first
         if (Array.isArray(response)) {
             response.forEach(message => {
-                if (message && message.text && typeof message.text === 'string' && message.text.trim()) {
+                // Skip empty messages and calendar widget messages (they're handled separately)
+                if (message && message.text && typeof message.text === 'string' && message.text.trim() && 
+                    !(message.json_message && message.json_message.type === 'calendar')) {
                     allMessages.push(message.text.trim());
+                }
+                // Check for calendar widget (skip if text is empty to avoid duplicate messages)
+                if (message && message.json_message && message.json_message.type === 'calendar') {
+                    console.log('Found calendar widget in array response:', message.json_message);
+                    try {
+                        addCalendarWidget(message.json_message, timestamp);
+                        // Don't set messageAdded to true if text is empty, to avoid showing empty message
+                        if (message.text && message.text.trim()) {
+                            messageAdded = true;
+                        }
+                    } catch (calendarError) {
+                        console.error('Error adding calendar widget:', calendarError);
+                        // Don't fail completely, just log the error
+                    }
                 }
             });
         } else if (response.messages && Array.isArray(response.messages)) {
             response.messages.forEach(message => {
-                if (message && message.text && typeof message.text === 'string' && message.text.trim()) {
+                // Skip empty messages and calendar widget messages (they're handled separately)
+                if (message && message.text && typeof message.text === 'string' && message.text.trim() && 
+                    !(message.json_message && message.json_message.type === 'calendar')) {
                     allMessages.push(message.text.trim());
+                }
+                // Check for calendar widget (skip if text is empty to avoid duplicate messages)
+                if (message && message.json_message && message.json_message.type === 'calendar') {
+                    console.log('Found calendar widget in messages array:', message.json_message);
+                    try {
+                        addCalendarWidget(message.json_message, timestamp);
+                        // Don't set messageAdded to true if text is empty, to avoid showing empty message
+                        if (message.text && message.text.trim()) {
+                            messageAdded = true;
+                        }
+                    } catch (calendarError) {
+                        console.error('Error adding calendar widget:', calendarError);
+                        // Don't fail completely, just log the error
+                    }
                 }
             });
         }
         
         // Filter out duplicate or very similar messages
+        // Check if we already have a greeting in the chat
+        const existingGreeting = Array.from(document.querySelectorAll('.message-text')).some(msg => {
+            const text = msg.textContent.toLowerCase();
+            return text.includes('welcome to stayassist') && text.includes('how can i assist');
+        });
+        
+        // CRITICAL: Filter out "Let's continue with book room" messages - these are unwanted
+        allMessages = allMessages.filter(msg => {
+            const msgLower = msg.toLowerCase();
+            // Filter out "Let's continue" messages
+            if (msgLower.includes("let's continue") || msgLower.includes("lets continue")) {
+                console.log('Filtered out unwanted "Let\'s continue" message:', msg);
+                return false;
+            }
+            return true;
+        });
+        
+        // Filter out "What else can I help you with?" if it appears after "Great! Let's continue with your booking."
+        // This is a fallback response that shouldn't appear when we're continuing a booking flow
+        if (allMessages.length >= 2) {
+            const firstMsg = allMessages[0].toLowerCase();
+            const secondMsg = allMessages[1].toLowerCase();
+            if (firstMsg.includes("great") && firstMsg.includes("continue") && 
+                (secondMsg.includes("what else") || secondMsg.includes("how can i assist") || secondMsg.includes("how can i help"))) {
+                // Remove the fallback message
+                console.log('Filtered out fallback message after "continue":', allMessages[1]);
+                allMessages = [allMessages[0]];
+            }
+        }
+        
         // If we have multiple messages and the first one is a greeting, only show the first one
         if (allMessages.length > 1) {
             const firstMessage = allMessages[0].toLowerCase();
@@ -401,6 +510,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 allMessages = uniqueMessages;
             }
+        }
+        
+        // If there's already a greeting in the chat and we're getting another greeting, filter it out
+        if (existingGreeting) {
+            allMessages = allMessages.filter(msg => {
+                const msgLower = msg.toLowerCase();
+                return !(msgLower.includes('welcome to stayassist') && msgLower.includes('how can i assist'));
+            });
         }
         
         // Display the filtered messages
@@ -472,10 +589,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // If no response was processed, show a fallback message
-        if (!messageAdded && (!response.actions || !Array.isArray(response.actions) || response.actions.length === 0)) {
-            addMessageToChat('bot', "I'm processing your request. Please give me a moment.", timestamp);
-        }
+            // If no response was processed, check if it's a greeting and provide a fallback
+            if (!messageAdded && (!response.actions || !Array.isArray(response.actions) || response.actions.length === 0)) {
+                // Check if the last user message contains date information (from calendar confirmation)
+                const lastUserMessage = document.querySelectorAll('.user-message .message-text');
+                let isDateConfirmation = false;
+                if (lastUserMessage.length > 0) {
+                    const lastText = lastUserMessage[lastUserMessage.length - 1].textContent.toLowerCase().trim();
+                    // Check if it's a date confirmation message
+                    if (lastText.includes('arrival date:') && lastText.includes('departure date:')) {
+                        isDateConfirmation = true;
+                    }
+                }
+                
+                // If it's a date confirmation, don't show fallback - the confirmation is already shown
+                if (isDateConfirmation) {
+                    console.log('Date confirmation detected, skipping fallback message');
+                    return;
+                }
+                
+                // Check the last user message to see if it's a greeting
+                if (lastUserMessage.length > 0) {
+                    const lastText = lastUserMessage[lastUserMessage.length - 1].textContent.toLowerCase().trim();
+                    const greetingWords = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings', 'hallo'];
+                    const isGreeting = greetingWords.some(word => lastText.includes(word));
+                    
+                    if (isGreeting) {
+                        // If it's a greeting, provide a friendly greeting response instead of fallback
+                        addMessageToChat('bot', "Hello! How can I help you today?", timestamp);
+                        return;
+                    }
+                }
+                // For non-greetings, show the fallback message
+                addMessageToChat('bot', "I'm processing your request. Please give me a moment.", timestamp);
+            }
     }
 
     /**
@@ -488,6 +635,314 @@ document.addEventListener('DOMContentLoaded', () => {
             default:
                 console.log('Unknown action:', action.name);
         }
+    }
+
+    /**
+     * Add calendar widget to chat with support for date range selection
+     * @param {Object} calendarData - Calendar data from Rasa (with mode: "arrival" or "departure")
+     * @param {Date} timestamp - Timestamp for the message
+     */
+    function addCalendarWidget(calendarData, timestamp) {
+        console.log('addCalendarWidget called with:', calendarData, timestamp);
+        // Create bot message container
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message', 'bot-message');
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.classList.add('message-avatar');
+        const avatarIcon = document.createElement('i');
+        avatarIcon.classList.add('fa-solid', 'fa-robot');
+        avatarDiv.appendChild(avatarIcon);
+        messageDiv.appendChild(avatarDiv);
+
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
+
+        // Add calendar widget
+        const calendarWidget = document.createElement('div');
+        calendarWidget.classList.add('calendar-widget');
+
+        const calendarHeader = document.createElement('div');
+        calendarHeader.classList.add('calendar-header');
+        
+        // Previous month button
+        const prevButton = document.createElement('button');
+        prevButton.classList.add('calendar-nav-button', 'calendar-prev');
+        prevButton.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+        prevButton.setAttribute('aria-label', 'Previous month');
+        calendarHeader.appendChild(prevButton);
+        
+        const monthYear = document.createElement('div');
+        monthYear.classList.add('calendar-month-year');
+        
+        // Create dates grid FIRST before defining updateCalendar
+        const datesGrid = document.createElement('div');
+        datesGrid.classList.add('calendar-dates');
+        
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getYear() + 1900;
+        
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+        
+        let displayMonth = currentMonth;
+        let displayYear = currentYear;
+        
+        // Store selected dates for booking mode
+        let selectedArrivalDate = null;
+        let selectedDepartureDate = null;
+        
+        // Function to update calendar display
+        function updateCalendar() {
+            monthYear.textContent = `${monthNames[displayMonth]} ${displayYear}`;
+            
+            // Clear existing dates
+            datesGrid.innerHTML = '';
+            
+            // Get first day of month and number of days
+            const firstDay = new Date(displayYear, displayMonth, 1).getDay();
+            const daysInMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
+            const minDate = calendarData.min_date ? new Date(calendarData.min_date) : today;
+
+            // Add empty cells for days before month starts
+            for (let i = 0; i < firstDay; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.classList.add('calendar-date', 'empty');
+                datesGrid.appendChild(emptyCell);
+            }
+
+            // Add date cells
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateCell = document.createElement('div');
+                dateCell.classList.add('calendar-date');
+                dateCell.textContent = day;
+
+                const cellDate = new Date(displayYear, displayMonth, day);
+                cellDate.setHours(0, 0, 0, 0);
+                const todayDate = new Date(today);
+                todayDate.setHours(0, 0, 0, 0);
+                const minDateOnly = new Date(minDate);
+                minDateOnly.setHours(0, 0, 0, 0);
+
+                // Mark today
+                if (cellDate.getTime() === todayDate.getTime()) {
+                    dateCell.classList.add('today');
+                }
+
+                // Disable past dates or dates before min_date
+                if (cellDate < minDateOnly) {
+                    dateCell.classList.add('disabled');
+                } else {
+                    // Check if arrival_date is set and we're in departure mode
+                    if (calendarData.mode === 'departure' && calendarData.arrival_date) {
+                        // Parse arrival date to compare
+                        const arrivalDate = new Date(calendarData.arrival_date);
+                        arrivalDate.setHours(0, 0, 0, 0);
+                        // Departure must be after arrival
+                        if (cellDate <= arrivalDate) {
+                            dateCell.classList.add('disabled');
+                        }
+                    }
+                    
+                    // In booking mode, handle both dates
+                    if (calendarData.mode === 'booking') {
+                        // Mark selected arrival date
+                        if (selectedArrivalDate && cellDate.getTime() === selectedArrivalDate.getTime()) {
+                            dateCell.classList.add('selected', 'arrival');
+                        }
+                        // Mark selected departure date
+                        if (selectedDepartureDate && cellDate.getTime() === selectedDepartureDate.getTime()) {
+                            dateCell.classList.add('selected', 'departure');
+                        }
+                        // Mark dates in range (between arrival and departure)
+                        if (selectedArrivalDate && selectedDepartureDate) {
+                            if (cellDate > selectedArrivalDate && cellDate < selectedDepartureDate) {
+                                dateCell.classList.add('in-range');
+                            }
+                        }
+                        // Disable dates before arrival if arrival is selected
+                        if (selectedArrivalDate && cellDate < selectedArrivalDate) {
+                            dateCell.classList.add('disabled');
+                        }
+                    }
+                    
+                    // Only add click handler if not disabled
+                    if (!dateCell.classList.contains('disabled')) {
+                        // Add click handler
+                        dateCell.addEventListener('click', () => {
+                            if (calendarData.mode === 'booking') {
+                                // Booking mode: handle both dates
+                                if (!selectedArrivalDate || (selectedArrivalDate && selectedDepartureDate)) {
+                                    // Start new selection: set arrival
+                                    selectedArrivalDate = new Date(cellDate);
+                                    selectedDepartureDate = null;
+                                    // Clear all selections
+                                    datesGrid.querySelectorAll('.calendar-date').forEach(cell => {
+                                        cell.classList.remove('selected', 'arrival', 'departure', 'in-range');
+                                    });
+                                    dateCell.classList.add('selected', 'arrival');
+                                } else if (selectedArrivalDate && !selectedDepartureDate) {
+                                    // Set departure
+                                    if (cellDate > selectedArrivalDate) {
+                                        selectedDepartureDate = new Date(cellDate);
+                                        dateCell.classList.add('selected', 'departure');
+                                        // Mark range
+                                        datesGrid.querySelectorAll('.calendar-date').forEach(cell => {
+                                            const cellDay = parseInt(cell.textContent);
+                                            if (cellDay && !cell.classList.contains('empty')) {
+                                                const cellDateCheck = new Date(displayYear, displayMonth, cellDay);
+                                                cellDateCheck.setHours(0, 0, 0, 0);
+                                                if (cellDateCheck > selectedArrivalDate && cellDateCheck < selectedDepartureDate) {
+                                                    cell.classList.add('in-range');
+                                                }
+                                            }
+                                        });
+                                        
+                                        // Show confirm button when both dates are selected
+                                        if (selectedArrivalDate && selectedDepartureDate) {
+                                            confirmContainer.style.display = 'block';
+                                        }
+                                    } else {
+                                        // Invalid: departure must be after arrival
+                                        alert('Departure date must be after arrival date');
+                                    }
+                                }
+                            } else {
+                                // Single date mode (arrival or departure)
+                                // Remove selected class from all dates
+                                datesGrid.querySelectorAll('.calendar-date').forEach(cell => {
+                                    cell.classList.remove('selected');
+                                });
+                                // Add selected class to clicked date
+                                dateCell.classList.add('selected');
+                                
+                                // Format date and send to Rasa
+                                const selectedDate = cellDate.toLocaleDateString('en-GB', {
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                });
+                                
+                                // Send date to Rasa
+                                sendToRasa(selectedDate);
+                            }
+                        });
+                    }
+                }
+
+                datesGrid.appendChild(dateCell);
+            }
+        }
+        
+        // Initial calendar render
+        updateCalendar();
+        
+        // Navigation buttons
+        prevButton.addEventListener('click', () => {
+            displayMonth--;
+            if (displayMonth < 0) {
+                displayMonth = 11;
+                displayYear--;
+            }
+            updateCalendar();
+        });
+        
+        // Next month button
+        const nextButton = document.createElement('button');
+        nextButton.classList.add('calendar-nav-button', 'calendar-next');
+        nextButton.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+        nextButton.setAttribute('aria-label', 'Next month');
+        nextButton.addEventListener('click', () => {
+            displayMonth++;
+            if (displayMonth > 11) {
+                displayMonth = 0;
+                displayYear++;
+            }
+            updateCalendar();
+        });
+        
+        monthYear.textContent = `${monthNames[displayMonth]} ${displayYear}`;
+        calendarHeader.appendChild(monthYear);
+        calendarHeader.appendChild(nextButton);
+        calendarWidget.appendChild(calendarHeader);
+
+        // Days header (static, doesn't change)
+        const daysHeader = document.createElement('div');
+        daysHeader.classList.add('calendar-days-header');
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        dayNames.forEach(day => {
+            const dayName = document.createElement('div');
+            dayName.classList.add('calendar-day-name');
+            dayName.textContent = day;
+            daysHeader.appendChild(dayName);
+        });
+        calendarWidget.appendChild(daysHeader);
+
+        // Dates grid is already created above, just append it
+        calendarWidget.appendChild(datesGrid);
+        
+        // Create confirm button container (initially hidden)
+        const confirmContainer = document.createElement('div');
+        confirmContainer.classList.add('calendar-confirm-container');
+        confirmContainer.style.display = 'none';
+        confirmContainer.id = 'calendar-confirm-' + Date.now();
+        
+        const confirmButton = document.createElement('button');
+        confirmButton.classList.add('calendar-confirm-button');
+        confirmButton.textContent = 'Confirm';
+        confirmButton.addEventListener('click', () => {
+            if (selectedArrivalDate && selectedDepartureDate) {
+                const arrivalStr = selectedArrivalDate.toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                });
+                const departureStr = selectedDepartureDate.toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric'
+                });
+                
+                // Send both dates together in one message to Rasa
+                // Format: "arrival date: [date], departure date: [date]"
+                const combinedMessage = `arrival date: ${arrivalStr}, departure date: ${departureStr}`;
+                
+                // Show user message first
+                const userTimestamp = new Date();
+                addMessageToChat('user', combinedMessage, userTimestamp);
+                
+                // Then show bot confirmation message IMMEDIATELY (before sending to Rasa)
+                const confirmMessage = `Arrival date: ${arrivalStr}\nDeparture date: ${departureStr}\n\nThe arrival and departure dates are available.`;
+                const botTimestamp = new Date();
+                addMessageToChat('bot', confirmMessage, botTimestamp);
+                
+                // Then send to Rasa (but skip adding user message since we already showed it)
+                // Use a small delay to ensure the bot message is shown first
+                setTimeout(() => {
+                    sendToRasaWithoutUserMessage(combinedMessage);
+                }, 200);
+                
+                // Hide confirm button
+                confirmContainer.style.display = 'none';
+            }
+        });
+        confirmContainer.appendChild(confirmButton);
+        calendarWidget.appendChild(confirmContainer);
+        
+        // confirmContainer is available in the click handler scope above
+        
+        contentDiv.appendChild(calendarWidget);
+
+        // Add timestamp
+        const timeDiv = document.createElement('div');
+        timeDiv.classList.add('message-time');
+        timeDiv.textContent = formatTimestamp(timestamp);
+        contentDiv.appendChild(timeDiv);
+
+        messageDiv.appendChild(contentDiv);
+        chatMessages.appendChild(messageDiv);
+        scrollToBottom();
     }
 
     /**
@@ -716,6 +1171,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Helper function to send to Rasa without adding user message (already shown)
+    function sendToRasaWithoutUserMessage(message) {
+        // Mark conversation started if triggered via helper button
+        markConversationStarted();
+        
+        // Show typing indicator
+        showTypingIndicator();
+        
+        // Send to Rasa
+        fetch('/api/send_message', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: message, context: conversationContext })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            const responseTimestamp = new Date();
+            hideTypingIndicator();
+            
+            // Check if data is valid - if empty or invalid, don't show error since confirmation is already shown
+            if (!data || (!data.messages && !data.actions && !data.error)) {
+                console.log('Empty or minimal response from Rasa (this is OK for date confirmations):', data);
+                // Don't show error - the confirmation message is already displayed
+                return;
+            }
+            
+            // Process response
+            handleRasaResponse(data, responseTimestamp);
+        })
+        .catch(error => {
+            console.error('Error communicating with Rasa (without user message):', error);
+            hideTypingIndicator();
+            // Don't show error message - the confirmation message is already displayed
+            // Just log the error for debugging
+        });
+    }
+    
     function markConversationStarted() {
         if (hasConversationStarted) return;
         hasConversationStarted = true;

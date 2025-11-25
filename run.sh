@@ -3,7 +3,21 @@
 # Function to stop background processes on exit
 cleanup() {
     echo "Stopping servers..."
-    kill $FLASK_PID $RASA_PID 2>/dev/null
+    # Try graceful shutdown first
+    if [ ! -z "$FLASK_PID" ]; then
+        kill -TERM $FLASK_PID 2>/dev/null
+        sleep 1
+        # Force kill if still running
+        kill -KILL $FLASK_PID 2>/dev/null
+    fi
+    if [ ! -z "$RASA_PID" ]; then
+        kill -TERM $RASA_PID 2>/dev/null
+        sleep 2
+        # Force kill if still running
+        kill -KILL $RASA_PID 2>/dev/null
+    fi
+    # Wait a moment for cleanup
+    sleep 1
     exit
 }
 
@@ -36,13 +50,13 @@ RASA_PID=$!
 # Wait a moment to ensure Rasa server has started
 sleep 10
 
-# Start Flask server in background on port 3000
+# Start Flask server in background on port 5000
 echo "Starting Flask server..."
-flask run --port 3000 &
+python app.py &
 FLASK_PID=$!
 
 echo "Chatbot servers are running!"
-echo "Access the application at http://localhost:3000"
+echo "Access the application at http://localhost:5001"
 echo "Press Ctrl+C to stop the servers."
 
 # Wait for user to press Ctrl+C

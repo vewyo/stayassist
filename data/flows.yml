@@ -1,23 +1,24 @@
 flows:
   greet:
-    description: Welcome guests and ask how the assistant can help them.
+    description: Welcome guests and ask how the assistant can help them. This flow is triggered when users greet the assistant (hello, hi, hey, etc.).
     steps:
       - action: utter_greet_and_offer_help
+  greet_followup:
+    description: Handle follow-up greetings after the initial welcome. Triggered when user says hello, hi, hey after already being greeted.
+    steps:
+      - action: utter_greet_followup
   book_room:
     description: Collect all information required to create a room reservation.
     steps:
-      - collect: arrival_date
-        description: "ask for the desired arrival date, handle typos and invalid dates gracefully"
-      - action: action_validate_date
-      - collect: nights
-        description: "ask for the number of nights, convert words to numbers, handle invalid numbers"
-      - action: action_validate_nights
-      - collect: rooms
-        description: "ask for the number of rooms, convert words to numbers, handle invalid numbers"
-      - action: action_validate_rooms
       - collect: guests
         description: "ask for the number of guests, convert words to numbers, handle invalid numbers"
-      - action: action_validate_guests
+      - collect: room_type
+        description: "ask which room type the guest wants (standard or suite), handle questions about available rooms"
+      - action: action_show_booking_calendar
+      - collect: arrival_date
+        description: "ask for the desired arrival date using calendar widget, handle typos and invalid dates gracefully"
+      - collect: departure_date
+        description: "ask for the departure date using calendar widget (second click), must be after arrival date"
       - collect: payment_option
         description: "ask whether the guest wants to pay at the desk or online"
   book_room_pay_at_desk:

@@ -23,13 +23,26 @@ slots:
     mappings:
       - type: from_llm
         prompt: |
-          Extract ONLY a valid arrival date from the user's message. 
+          Extract ONLY a valid FUTURE arrival date from the user's message. 
           The user is being asked for their arrival date.
-          - If the message contains a date (like "15 February 2024", "15/02/2024", "2024-02-15"), extract it.
+          
+          CRITICAL: This slot mapping should ONLY be executed when the bot is actively asking for the arrival date. If the bot has NOT asked for the arrival date yet, return null.
+          
+          CRITICAL: If the bot just showed a booking calendar (action_show_booking_calendar), return null - the user will select dates from the calendar.
+          
+          CRITICAL: First determine if the message is actually providing a date or if it's asking a QUESTION or making a general request.
+          
+          - If the message contains BOTH "arrival date" and "departure date" (like "arrival date: 9 December 2025, departure date: 12 December 2025"), extract ONLY the arrival date (the date after "arrival date:").
+          - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT arrival dates.
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT dates.
+          - If the message contains words related to facilities, accessibility, or hotel information (like "disabled", "wheelchair", "lift", "pool", "parking", "breakfast", "price", "cost", "room", "suite"), return null. These are NOT dates - they are questions or information requests.
+          - If the message contains a date (like "15 February 2025", "15/02/2025", "2025-02-15"), check if it's in the FUTURE or TODAY. If the date is in the PAST (before today), return null - we cannot accept past dates.
           - If the message contains only a month name (like "December"), that is NOT a complete date - return null.
+          - If the message contains only a day and month without year (like "22 March", "15 February"), that is NOT a complete date - return null. The year is required.
           - If the message contains nonsense like "66 december" or invalid dates, return null.
           - If the message is clearly not a date (like "no", "I don't know", numbers without context), return null.
-          Return only the date in a standard format, or null if no valid date can be extracted.
+          - IMPORTANT: Only accept dates from today onwards. Reject any date that is in the past. Check the year - dates from 2019, 2020, 2021, 2022, 2023, 2024 are in the past and should be rejected (unless the current year is one of those, in which case only accept dates from today onwards).
+          Return only the date in a standard format, or null if no valid FUTURE date can be extracted.
   nights:
     type: text
     mappings:
@@ -37,6 +50,10 @@ slots:
         prompt: |
           Extract ONLY the number of nights from the user's message.
           The user is being asked "How many nights would you like to stay?"
+          
+          CRITICAL: First determine if the message is actually answering "how many nights" or if it's asking a QUESTION.
+          
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT answers to "how many nights".
           - Extract numbers like "1", "2", "three", "one night" → extract the number
           - If the message contains a date or month name (like "December", "66 december"), that is NOT an answer to "how many nights" - return null.
           - If the message is clearly not a number of nights (like "no", "I don't know", dates), return null.
@@ -49,10 +66,15 @@ slots:
         prompt: |
           Extract ONLY the number of rooms from the user's message.
           The user is being asked "How many rooms should I reserve for you?"
-          - Extract numbers like "1", "2", "three", "one room" → extract the number
+          
+          CRITICAL: First determine if the message is actually answering "how many rooms" or if it's asking a QUESTION.
+          
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT answers to "how many rooms".
           - If the message contains a date or month name, that is NOT an answer to "how many rooms" - return null.
-          - If the message is clearly not a number of rooms (like "no", "I don't know"), return null.
+          - If the message is clearly not a number of rooms (like "no", "I don't know" without context), return null.
+          - Only if the message is clearly providing a NUMBER of rooms (like "1", "2", "three", "one room", "two rooms"), extract the number.
           - Only return a number between 1 and 10, or null if no valid number of rooms can be extracted.
+          
           Return only the number as text (e.g., "1", "2"), or null.
   guests:
     type: text
@@ -60,16 +82,82 @@ slots:
       - type: from_llm
         prompt: |
           Extract ONLY the number of guests from the user's message.
-          The user is being asked "How many guests will be staying?"
+          The user is being asked "For how many guests?"
+          
+          CRITICAL: This slot mapping should ONLY be executed when the bot is actively asking "For how many guests?". If the bot has NOT asked this question yet, return null.
+          
+          CRITICAL: First determine if the message is actually answering "for how many guests" or if it's asking a QUESTION or making a general request.
+          
+          - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT answers to "for how many guests".
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT answers to "for how many guests".
           - Extract numbers like "1", "2", "three", "two guests" → extract the number
-          - If the message contains a date or month name, that is NOT an answer to "how many guests" - return null.
-          - If the message is clearly not a number of guests (like "no", "I don't know"), return null.
+          - If the message contains a date or month name, that is NOT an answer to "for how many guests" - return null.
+          - If the message contains only letters without numbers (like "As", "no", "I don't know", "maybe"), that is NOT a number - return null.
+          - If the message is clearly not a number of guests (like "no", "I don't know", random text), return null.
           - Only return a number between 1 and 20, or null if no valid number of guests can be extracted.
           Return only the number as text (e.g., "1", "2"), or null.
+  room_type:
+    type: text
+    mappings:
+      - type: from_llm
+        prompt: |
+          Extract ONLY the room type from the user's message.
+          The user is being asked "Which room would you like? (standard or suite)"
+          
+          CRITICAL: This slot mapping should ONLY be executed when the bot is actively asking "Which room would you like?". If the bot has NOT asked this question yet, return null.
+          
+          CRITICAL: First determine if the message is actually selecting a room type or if it's asking a QUESTION or making a general request.
+          
+          - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT answers to "which room would you like".
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT room selections.
+          - CRITICAL: If the message contains ONLY numbers (like "1", "2", "3", "two", "three") without "standard" or "suite", return null. Numbers are NOT room types - they are answers to other questions like "how many guests".
+          - If the message contains "standard" or "standard room", return "standard"
+          - If the message contains "suite" or "suites", return "suite"
+          - If the message is clearly not a room type selection (like "no", "I don't know" without context, or just numbers), return null.
+          - Only return "standard" or "suite", or null if no valid room type can be extracted.
+  departure_date:
+    type: text
+    mappings:
+      - type: from_llm
+        prompt: |
+          Extract ONLY a valid FUTURE departure date from the user's message.
+          The user is being asked for their departure date (check-out date).
+          
+          CRITICAL: This slot mapping should ONLY be executed when the bot is actively asking for the departure date. If the bot has NOT asked for the departure date yet, return null.
+          
+          CRITICAL: First determine if the message is actually providing a date or if it's asking a QUESTION or making a general request.
+          
+          - If the message contains BOTH "arrival date" and "departure date" (like "arrival date: 9 December 2025, departure date: 12 December 2025"), extract ONLY the departure date (the date after "departure date:").
+          - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT departure dates.
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT dates.
+          - If the message contains words related to facilities, accessibility, or hotel information (like "disabled", "wheelchair", "lift", "pool", "parking", "breakfast", "price", "cost", "room", "suite"), return null. These are NOT dates - they are questions or information requests.
+          - If the message contains a date (like "15 February 2025", "15/02/2025", "2025-02-15"), check if it's in the FUTURE or TODAY. If the date is in the PAST (before today), return null - we cannot accept past dates.
+          - If the message contains only a month name (like "December"), that is NOT a complete date - return null.
+          - If the message contains only a day and month without year (like "22 March", "15 February"), that is NOT a complete date - return null. The year is required.
+          - IMPORTANT: The departure date must be AFTER the arrival date. If an arrival_date has been set, only accept departure dates that are after the arrival date.
+          - IMPORTANT: Only accept dates from today onwards. Reject any date that is in the past.
+          Return only the date in a standard format, or null if no valid FUTURE date can be extracted.
   payment_option:
     type: text
     mappings:
       - type: from_llm
+        prompt: |
+          Extract ONLY the payment option from the user's message.
+          The user is being asked "Would you like to pay at the front desk or complete the payment online now?"
+          
+          CRITICAL: This slot mapping should ONLY be executed when the bot is actively asking for the payment option. If the bot has NOT asked for the payment option yet, return null.
+          
+          CRITICAL: If the bot just asked "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?" (this means information_sufficient slot is "asked"), return null. Wait for the user to confirm before proceeding with payment option collection.
+          
+          CRITICAL: First determine if the message is actually providing a payment option or if it's asking a QUESTION or making a general request.
+          
+          - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT payment options.
+          - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT payment options.
+          - If the message contains words related to facilities, accessibility, or hotel information (like "pool", "parking", "breakfast", "lift", "wheelchair", "disabled", etc.), return null. These are NOT payment options - they are questions or information requests.
+          - CRITICAL: If the message contains "yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "proceed" (especially in response to "I hope I've provided you with sufficient information"), return null. These are confirmations, NOT payment options.
+          - If the message contains "desk", "front desk", "at desk", "reception", "counter", "online", "now", "pay now", "card", "credit", "debit", extract the payment option.
+          - If the message is clearly not a payment option (like "no", "I don't know" without context), return null.
+          Return only "at_desk" or "online", or null if no valid payment option can be extracted.
   email:
     type: text
     mappings:
@@ -100,15 +188,25 @@ slots:
     influence_conversation: false
     mappings:
       - type: custom
+  information_sufficient:
+    type: text
+    mappings:
+      - type: from_llm
 
 responses:
   utter_greet_and_offer_help:
     - text: "Welcome to StayAssist. How can I assist you today?"
       metadata:
         rephrase: False
+  utter_greet_followup:
+    - text: "Hello! How can I help you today?"
+      metadata:
+        rephrase: False
 
   utter_ask_arrival_date:
-    - text: "What is your desired arrival date?"
+    - text: ""
+      metadata:
+        rephrase: False
 
   utter_ask_nights:
     - text: "How many nights would you like to stay?"
@@ -116,11 +214,19 @@ responses:
   utter_ask_rooms:
     - text: "How many rooms should I reserve for you?"
 
-  utter_ask_guests:
-    - text: "How many guests will be staying?"
+
+  utter_ask_room_type:
+    - text: "Which room would you like? (standard or suite)"
+
+  utter_ask_departure_date:
+    - text: ""
+      metadata:
+        rephrase: False
+  utter_ask_dates:
+    - text: "Please select your arrival and departure date"
 
   utter_ask_payment_option:
-    - text: "Would you like to pay at the front desk or complete the payment online now?"
+    - text: ""  # Empty - ValidatePaymentOption handles asking conditionally
 
   utter_ask_email:
     - text: "Could you share the email address for the reservation confirmation?"
@@ -154,7 +260,17 @@ responses:
           The assistant never asks the guest which city or neighborhood they prefer, because there is only one property location.
           The assistant is warm, concise, and confident about the hotel offerings.
           
-          CRITICAL: When greeting users, say "Welcome to StayAssist. How can I assist you today?" - DO NOT add "Amsterdam" to the greeting message. Keep greetings simple and friendly.
+          ⚠️⚠️⚠️ CRITICAL RULE - READ THIS FIRST ⚠️⚠️⚠️
+          If the user is in a booking flow (the bot has asked for guests, room type, dates, or payment) and the user asks a question (like "is there a pool", "what about parking", "is there a parking spot"), you MUST ONLY provide the answer to the question. DO NOT add "Let's continue", "Let's continue with book room", "Shall we continue", or ANY continuation phrase. The booking flow will automatically handle continuation. ONLY provide the answer.
+          ⚠️⚠️⚠️ END CRITICAL RULE ⚠️⚠️⚠️
+          
+          CRITICAL: When the user says "book a room", "i want to book", "reserve a room", "make a reservation", or any similar booking request, you MUST trigger the book_room flow. Do NOT respond with "placeholder" or "I'm processing your request". The book_room flow will automatically start asking for the required information.
+          
+          CRITICAL: When greeting users for the FIRST time, say "Welcome to StayAssist. How can I assist you today?" - DO NOT add "Amsterdam" to the greeting message. Keep greetings simple and friendly.
+          
+          CRITICAL: If the user greets you (says "hello", "hi", "hey", "good morning", "good afternoon", "good evening", etc.) AFTER you have already greeted them, DO NOT repeat the full "Welcome to StayAssist" greeting. Instead, respond briefly and ask how you can help, for example: "Hello! How can I help you today?" or "Hi there! What can I do for you?" or "Hi! How can I assist you?"
+          
+          IMPORTANT: Always respond to greetings. Never show "I'm processing your request" or "placeholder" when the user greets you. Always provide a friendly greeting response.
           
           CRITICAL ERROR HANDLING RULES:
           1. Recognize and auto-correct spelling mistakes (e.g., "februay" → "February")
@@ -165,8 +281,59 @@ responses:
           6. When input is wrong or invalid, explain what's wrong and immediately ask a clear new question with examples
           7. Never crash on incomprehensible input; always ask for clarification and provide examples of valid answers
           8. If the guest says they don't understand, automatically provide a clearer, simpler explanation step by step, avoiding confusing terms
+          9. DO NOT say "Let's continue" or "Let's continue with book room" - the flow will automatically continue after questions are answered
+          10. When a user asks a question during a booking flow (e.g., "is there a pool", "what about parking", "is there a parking spot"), DO NOT say "Let's continue" or "Let's continue with book room". Instead, answer the question directly and let the booking flow handle the continuation automatically.
+          11. CRITICAL: If you are in a booking flow and the user asks a question, ONLY provide the answer to the question. DO NOT add any continuation phrases like "Let's continue", "Let's continue with book room", "Shall we continue", etc. The booking flow will automatically handle continuation.
+          
+          CRITICAL: If the user asks ANY QUESTION (in ANY way, using ANY wording - be intelligent and understand the intent, not just keywords), DO NOT respond with "placeholder". 
+          
+          Recognize questions by intent, not just keywords. Questions include:
+          - Question words: "what", "which", "how", "when", "where", "why", "who", "wat", "welke", "hoe", "wanneer", "waar", "waarom"
+          - Question phrases: "tell me", "can you", "could you", "do you", "is there", "are there", "i don't know", "i dont know", "what about"
+          - Question marks: "?"
+          - Any sentence that is clearly asking for information rather than providing an answer
+          
+          When you detect ANY question, provide helpful information based on what they're asking:
+          - Questions about prices/costs → provide room pricing information
+          - Questions about room types/features/differences → provide room information (Standard rooms are €50 per night and suites are €120 per night. Both offer king-size beds that can be converted into two singles on request, plus a refrigerator, shower, and full bathroom; suites include 3 rooms with king-size beds and a second WC.)
+          - Questions about facilities (pool, parking, gym) → provide facility information (e.g., "The pool is open daily from 07:30 to 18:00.")
+          - Questions about meals (breakfast, lunch, dinner) → provide meal times
+          - Questions about times/hours → provide relevant opening hours
+          - Questions about accessibility (lift, elevator, wheelchair, mobility assistance, disabled people, handicap, "what about disabled") → provide accessibility information
+          - Questions about differences between room types → explain the differences between standard and suite rooms
+          - Any other hotel-related question → provide relevant helpful information
+          
+          CRITICAL: When answering questions during a booking flow, ONLY provide the answer. DO NOT add "Let's continue" or "Let's continue with book room" - the booking flow will handle continuation automatically after the question is answered.
+          
+          EXAMPLE: If user asks "is there a parking spot" during booking, respond ONLY with "Parking is available for €5 per 24 hours." DO NOT add "Let's continue" or any continuation phrase.
+          
+          EXAMPLE: If user asks "what about pools" during booking, respond ONLY with "The pool is open daily from 07:30 to 18:00." DO NOT add "Let's continue" or any continuation phrase.
+          
+          Facility information to provide:
+          - Room prices: "Standard rooms are €50 per night and suites are €120 per night. Both offer king-size beds that can be converted into two singles on request, plus a refrigerator, shower, and full bathroom; suites include 3 rooms with king-size beds and a second WC."
+          - Pool: "The pool is open daily from 07:30 to 18:00."
+          - Parking: "Parking is available for €5 per 24 hours."
+          - Breakfast: "Breakfast is served from 07:00 to 11:00."
+          - Lunch: "Lunch is available from 13:00 to 15:00."
+          - Dinner: "Dinner service runs from 18:00 to 20:00."
+          - Gym: "The gym is open 24 hours a day."
+          - Accessibility: "Our hotel is fully accessible. We have an elevator/lift available, and all areas including rooms, restaurant, pool, and common areas are wheelchair accessible. Our staff is available 24/7 to assist with mobility needs. If you need assistance during your stay, please let us know and we'll be happy to help."
           
           The user is making small talk, and the assistant should respond, keeping things light.
+          
+          CRITICAL GREETING HANDLING:
+          - If the user says "hello", "hi", "hey", "good morning", "good afternoon", "good evening", "greetings", "hallo", or ANY greeting word/phrase, you MUST respond with a friendly greeting. 
+          - DO NOT respond with "I'm processing your request", "placeholder", or any fallback message.
+          - DO NOT ignore greetings - always acknowledge them.
+          - Examples of correct responses to greetings:
+            * "Hello! How can I help you today?"
+            * "Hi there! What can I do for you?"
+            * "Hi! How can I assist you?"
+            * "Hey! How can I help?"
+            * "Good morning! How can I assist you today?"
+          
+          This is the HIGHEST PRIORITY - greetings must ALWAYS be responded to with a friendly greeting response.
+          
           Context / previous conversation with the user:
           {{history}}
           {{current_input}}
@@ -184,3 +351,14 @@ actions:
   - action_validate_rooms
   - action_validate_guests
   - action_clarify_explanation
+  - action_handle_greeting
+  - action_show_calendar
+  - action_show_booking_calendar
+  - action_ask_guests
+  - validate_arrival_date
+  - validate_departure_date
+  - validate_nights
+  - validate_rooms
+  - validate_guests
+  - validate_room_type
+  - validate_payment_option
