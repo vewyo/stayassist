@@ -1,65 +1,144 @@
+# StayAssist Chatbot
 
-# Getting Started
-It's recommended to run this repository in GitHub Codespaces (in GitHub, press the green 'Code' button and then Codespaces). If you prefer to work in VS Code or another IDE, you need to manually run these commands:
+Een intelligente chatbot voor hotelboekingen met Rasa Pro en Flask.
 
-```
-pip install -U pip uv
-uv venv
-source .venv/bin/activate
-uv pip install --extra-index-url https://europe-west3-python.pkg.dev/rasa-releases/rasa-pro-python/simple rasa-pro
-uv pip install -r requirements.txt
-```
+## 🚀 Quick Start
 
-Create a file called `.env` containing your license key:
-```
-RASA_LICENSE=<the Rasa license key you received when creating your developer account>
-```
+### Vereisten
+- Python 3.8+
+- Virtual environment (`.venv`)
 
----
-
-## Installation
-**Train the Rasa model**
-
-   ```bash
-   rasa train
-   ```
-
----
-
-## Running the Application
-
-You can run the application in two ways:
-
-### Option 1: Using the convenience script
+### Eenvoudige Commands
 
 ```bash
-./run.sh
+# Alles stoppen (als er servers draaien)
+./stop.sh
+
+# Alles starten
+./start.sh
+
+# Trainen en daarna starten
+./train_and_run.sh
 ```
 
-This script will:
+## 📋 Gedetailleerde Instructies
 
-- Start the Rasa server with proper CORS settings on port 5005
-- Start the Flask server (frontend) on port 5000
-- Press `Ctrl+C` to stop both servers
+### 1. Virtual Environment Activeren
 
-### Option 2: Starting servers manually
+```bash
+source .venv/bin/activate
+```
 
-1. **Start the Flask server**
+### 2. Servers Starten
 
-   ```bash
-   python app.py
-   ```
+**Optie A: Simpel (aanbevolen)**
+```bash
+./start.sh
+```
 
-2. **Start the Rasa server (in a separate terminal)**
+**Optie B: Handmatig**
+```bash
+# Terminal 1: Start Rasa
+rasa run --enable-api --cors "*"
 
-   ```bash
-   rasa run --enable-api --cors "*"
-   ```
+# Terminal 2: Start Flask
+python app.py
+```
 
-   > **IMPORTANT**: The `--cors "*"` parameter is essential for the frontend to communicate with the Rasa API. Without it, you'll encounter CORS errors in your browser.
+### 3. Training
 
-3. **Access the application**
+```bash
+# Alleen trainen
+rasa train
 
-   Open your browser and navigate to `<your-codespace-id-xxxxx>-5000.app.github.dev` if you are running the app in Github codespaces, or `http://localhost:5000` if you are running it locally.
+# Trainen en starten
+./train_and_run.sh
+```
 
----
+### 4. Servers Stoppen
+
+**Simpel:**
+```bash
+./stop.sh
+```
+
+**Handmatig:**
+- Druk `Ctrl+C` in beide terminals
+
+## 🌐 Toegang
+
+- **Chatbot UI:** http://localhost:5001
+- **Rasa API:** http://localhost:5005
+
+## 📁 Project Structuur
+
+```
+stayassist/
+├── actions/              # Custom Rasa actions
+│   ├── actions.py        # Validatie en logica
+│   └── action_ask_guests.py
+├── data/                 # Rasa training data
+│   ├── flows.yml         # Conversatie flows
+│   ├── nlu.yml          # Intent voorbeelden
+│   └── patterns.yml     # Pattern matching
+├── domain.yml           # Rasa domain configuratie
+├── config.yml           # Rasa pipeline configuratie
+├── app.py               # Flask backend server
+├── frontend/            # Frontend UI
+│   ├── index.html
+│   ├── css/
+│   └── js/
+├── start.sh             # Start alles (simpel)
+├── stop.sh              # Stop alles (simpel)
+├── train_and_run.sh     # Train en start
+└── run.sh               # Oude run script
+
+```
+
+## 🔧 Features
+
+- ✅ Booking flow met slot collection
+- ✅ Calendar widget voor datum selectie
+- ✅ Facility informatie (pool, parking, etc.)
+- ✅ Accessibility vragen
+- ✅ Robuuste vraag handling tijdens booking
+- ✅ Automatische validatie en foutafhandeling
+
+## 🐛 Troubleshooting
+
+### Poort al in gebruik?
+
+```bash
+# Stop alle servers
+./stop.sh
+
+# Wacht even en start opnieuw
+./start.sh
+```
+
+### Rasa training errors?
+
+```bash
+# Check voor syntax errors
+rasa data validate
+```
+
+### Flask errors?
+
+```bash
+# Check of Rasa draait
+curl http://localhost:5005/status
+```
+
+## 📝 Git Workflow
+
+```bash
+# Wijzigingen committen en pushen
+git add -A
+git commit -m "Beschrijving van wijzigingen"
+git push origin main
+```
+
+## 📚 Meer Info
+
+Voor meer details over Rasa Pro, zie: https://rasa.com/docs/rasa/
