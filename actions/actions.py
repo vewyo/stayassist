@@ -432,39 +432,6 @@ class ActionValidateRooms(Action):
         return [SlotSet("rooms", str(int(parsed_value)))]
 
 
-class ActionValidateGuests(Action):
-    """Validate number of guests and provide friendly error messages."""
-    def name(self) -> Text:
-        return "action_validate_guests"
-    
-    def run(
-        self,
-        dispatcher: CollectingDispatcher,
-        tracker: Tracker,
-        domain: Dict[Text, Any],
-    ) -> List[Dict[Text, Any]]:
-        guests = tracker.get_slot("guests")
-        
-        if not guests:
-            # Only ask if information_sufficient is NOT "asked"
-            if information_sufficient != "asked":
-                dispatcher.utter_message(text="For how many guests?")
-            return []
-        
-        is_valid, error_msg, parsed_value = _validate_positive_number(guests, "number of guests", allow_zero=False)
-        
-        if not is_valid:
-            dispatcher.utter_message(
-                text=(
-                    f"{error_msg} "
-                    "For example, you could say 'one guest', 'two guests', or just '1' or '2'."
-                )
-            )
-            return [SlotSet("guests", None)]
-        
-        return [SlotSet("guests", str(int(parsed_value)))]
-
-
 class ActionConfirmReservationHold(Action):
     def name(self) -> Text:
         return "action_confirm_reservation_hold"
@@ -693,23 +660,6 @@ class ValidateRoomType(Action):
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
         latest_lower = latest_message.lower().strip()
 
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Ask for room_type again - clear the slot to restart collection
-                dispatcher.utter_message(text="Which room would you like? (standard or suite)")
-                return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # Return empty list to prevent Rasa from automatically continuing
-            return []
-
         # FIRST: Check if the message is just a number (like "2", "3", etc.) - this is NOT a room type
         # Numbers are answers to "how many guests", not "which room type"
         try:
@@ -734,8 +684,6 @@ class ValidateRoomType(Action):
         room_type = tracker.get_slot("room_type")
         if room_type:
             room_type_lower = str(room_type).lower().strip()
-            # CRITICAL: If slot is "waiting", it means we're waiting for user to say "continue"
-            # Don't process it, just return empty list to wait
             # Check if slot value is just a number - if so, clear it
             try:
                 float(room_type_lower)
@@ -748,18 +696,17 @@ class ValidateRoomType(Action):
             elif "suite" in room_type_lower:
                 return [SlotSet("room_type", "suite")]
 
-        # SECOND: Check if it's a question about available rooms (only if not a valid selection)
+        # Check if it's a question about available rooms (only if not a valid selection)
         is_question = _is_question(latest_message)
         if is_question:
             is_facility, facility_response = _is_facility_question(latest_message)
             if is_facility and facility_response:
+                # Answer the question
                 dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Ask the original question again directly
+                dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+                # Clear the slot to continue collecting
+                return [SlotSet("room_type", None)]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("room_type", None)]
 
@@ -817,7 +764,7 @@ class ValidateArrivalDate(Action):
     """Validate arrival date - automatically called by Rasa when arrival_date slot is set."""
     def name(self) -> Text:
         return "validate_arrival_date"
-    
+
     def run(
         self,
         dispatcher: CollectingDispatcher,
@@ -828,14 +775,11 @@ class ValidateArrivalDate(Action):
         is_question = _is_question(latest_message)
         is_facility, facility_response = _is_facility_question(latest_message)
 
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Show calendar widget again for arrival_date - clear the slot to restart collection
+        if is_question or (is_facility and facility_response):
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Show calendar widget again directly
                 try:
                     today = datetime.now()
                     calendar_data = {
@@ -850,29 +794,12 @@ class ValidateArrivalDate(Action):
                     dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
                 except Exception as e:
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
-                return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # Return empty list to prevent Rasa from automatically continuing
-            return []
-
-        if is_question or (is_facility and facility_response):
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Clear the slot to continue collecting
+                return [SlotSet("arrival_date", None)]
             return [SlotSet("arrival_date", None)]
 
         arrival_date = tracker.get_slot("arrival_date")
-        
-        # CRITICAL: If slot is "waiting", it means we're waiting for user to say "continue"
-        # Don't process it, just return empty list to wait
+
         # Check if booking calendar was just shown
         latest_action = None
         events_list = list(tracker.events)
@@ -881,7 +808,7 @@ class ValidateArrivalDate(Action):
             if hasattr(event, 'action_name') and event.action_name == 'action_show_booking_calendar':
                 latest_action = event.action_name
                 break
-        
+
         if latest_action == 'action_show_booking_calendar' and not arrival_date:
             return []
 
@@ -907,17 +834,15 @@ class ValidateDepartureDate(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
-        
+
         is_question = _is_question(latest_message)
         is_facility, facility_response = _is_facility_question(latest_message)
 
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
+        if is_question or (is_facility and facility_response):
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Show calendar widget again directly
                 try:
                     today = datetime.now()
                     arrival_date = tracker.get_slot("arrival_date")
@@ -933,30 +858,13 @@ class ValidateDepartureDate(Action):
                     dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
                 except Exception as e:
                     dispatcher.utter_message(text="Please select your departure date:")
-                return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # Return empty list to prevent Rasa from automatically continuing
-            return []
-
-        if is_question or (is_facility and facility_response):
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Clear the slot to continue collecting
+                return [SlotSet("departure_date", None)]
             return [SlotSet("departure_date", None)]
 
         departure_date = tracker.get_slot("departure_date")
         arrival_date = tracker.get_slot("arrival_date")
 
-        # CRITICAL: If slot is "waiting", it means we're waiting for user to say "continue"
-        # Don't process it, just return empty list to wait
         # If both dates are already set, validate them
         if arrival_date and departure_date:
             is_arrival_valid, _ = _validate_date(arrival_date)
@@ -975,7 +883,7 @@ class ValidateDepartureDate(Action):
                         break
                     except ValueError:
                         continue
-                
+
                 if arrival_parsed and departure_parsed:
                     if departure_parsed <= arrival_parsed:
                         arrival_str = arrival_parsed.strftime("%d %B %Y")
@@ -1029,41 +937,6 @@ class ValidatePaymentOption(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
-        
-        # CRITICAL: Check information_sufficient FIRST, before anything else
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            # Check for yes/continue responses - be more flexible with combinations
-            # First check for explicit yes words
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            # Check if message contains any yes word
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Clear payment_option slot to None to ensure Rasa knows we're still collecting it
-                # This forces Rasa to stay in the flow and ask the question again
-                dispatcher.utter_message(
-                    text="Would you like to pay at the front desk or complete the payment online now?"
-                )
-                # Clear both slots: information_sufficient to exit the question loop, payment_option to restart collection
-                return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
-            # Check for no/more questions responses
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-            # If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # But if it's a very short message (1-2 words) that might be "yes", try to interpret it
-            if len(latest_lower.split()) <= 2:
-                # Very short response - likely "yes" or similar
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Clear payment_option slot to None to ensure Rasa knows we're still collecting it
-                # This forces Rasa to stay in the flow and ask the question again
-                dispatcher.utter_message(
-                    text="Would you like to pay at the front desk or complete the payment online now?"
-                )
-                # Clear both slots: information_sufficient to exit the question loop, payment_option to restart collection
-                return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
-            return []
 
         is_question = _is_question(latest_message)
 
@@ -1071,21 +944,20 @@ class ValidatePaymentOption(Action):
         if is_question:
             is_facility, facility_response = _is_facility_question(latest_message)
             if is_facility and facility_response:
+                # Answer the question
                 dispatcher.utter_message(text=facility_response)
+                # Ask the original question again directly
                 dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                    text="Would you like to pay at the front desk or complete the payment online now?"
                 )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Clear the slot to continue collecting
+                return [SlotSet("payment_option", None)]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("payment_option", None)]
 
         payment_option = tracker.get_slot("payment_option")
 
-        # CRITICAL: If slot is "waiting", it means we're waiting for user to say "continue"
-        # Don't process it, just return empty list to wait
-        # If payment_option is not set, ask for it (only if information_sufficient is NOT "asked")
+        # If payment_option is not set, ask for it
         if not payment_option:
             dispatcher.utter_message(
                 text="Would you like to pay at the front desk or complete the payment online now?"
@@ -1118,23 +990,7 @@ class ValidateGuests(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
-
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Ask for guests again - clear the slot to restart collection
-                dispatcher.utter_message(text="For how many guests?")
-                return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # Return empty list to prevent Rasa from automatically continuing
-            return []
+        guests = tracker.get_slot("guests")
 
         # Check if the latest user message is a question (not an answer)
         is_question = _is_question(latest_message)
@@ -1143,24 +999,21 @@ class ValidateGuests(Action):
             # Check if it's a facility question we can answer
             is_facility, facility_response = _is_facility_question(latest_message)
             if is_facility and facility_response:
+                # Answer the question
                 dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and prevent utter_ask_guests
-                return [SlotSet("information_sufficient", "asked")]
+                # Ask the original question again directly
+                dispatcher.utter_message(text="For how many guests?")
+                # Clear the slot to continue collecting
+                return [SlotSet("guests", None)]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("guests", None)]
 
         if not guests:
-            # Only ask if information_sufficient is NOT "asked"
-            if information_sufficient != "asked":
-                dispatcher.utter_message(text="For how many guests?")
+            dispatcher.utter_message(text="For how many guests?")
             return []
-        
+
         is_valid, error_msg, parsed_value = _validate_positive_number(guests, "number of guests", allow_zero=False)
-        
+
         if not is_valid:
             dispatcher.utter_message(
                 text=(
@@ -1169,7 +1022,7 @@ class ValidateGuests(Action):
                 )
             )
             return [SlotSet("guests", None)]
-        
+
         return [SlotSet("guests", str(int(parsed_value)))]
 
 
@@ -1186,14 +1039,16 @@ class ValidateNights(Action):
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
 
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Show calendar widget again for arrival_date - clear the slot to restart collection
+        # Check if the latest user message is a question (not an answer)
+        is_question = _is_question(latest_message)
+
+        if is_question:
+            # Check if it's a facility question we can answer
+            is_facility, facility_response = _is_facility_question(latest_message)
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Show calendar widget again directly
                 try:
                     today = datetime.now()
                     calendar_data = {
@@ -1208,33 +1063,18 @@ class ValidateNights(Action):
                     dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
                 except Exception as e:
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
-                return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-
-        # Check if the latest user message is a question (not an answer)
-        is_question = _is_question(latest_message)
-
-        if is_question:
-            # Check if it's a facility question we can answer
-            is_facility, facility_response = _is_facility_question(latest_message)
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                return [SlotSet("nights", None), SlotSet("information_sufficient", "asked")]
+                # Clear the slot to continue collecting
+                return [SlotSet("nights", None)]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("nights", None)]
 
         nights = tracker.get_slot("nights")
-        
+
         if not nights:
             return []
-        
+
         is_valid, error_msg, parsed_value = _validate_positive_number(nights, "number of nights", allow_zero=False)
-        
+
         if not is_valid:
             dispatcher.utter_message(
                 text=(
@@ -1243,7 +1083,7 @@ class ValidateNights(Action):
                 )
             )
             return [SlotSet("nights", None)]
-        
+
         return [SlotSet("nights", str(int(parsed_value)))]
 
 
@@ -1260,14 +1100,16 @@ class ValidateRooms(Action):
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
 
-        # Check if user is responding to "is information sufficient" question
-        information_sufficient = tracker.get_slot("information_sufficient")
-        if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
-            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
-            if any(word in latest_lower for word in yes_words):
-                dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Show calendar widget again for arrival_date - clear the slot to restart collection
+        # Check if the latest user message is a question (not an answer)
+        is_question = _is_question(latest_message)
+
+        if is_question:
+            # Check if it's a facility question we can answer
+            is_facility, facility_response = _is_facility_question(latest_message)
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Show calendar widget again directly
                 try:
                     today = datetime.now()
                     calendar_data = {
@@ -1282,33 +1124,18 @@ class ValidateRooms(Action):
                     dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
                 except Exception as e:
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
-                return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
-            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
-
-        # Check if the latest user message is a question (not an answer)
-        is_question = _is_question(latest_message)
-
-        if is_question:
-            # Check if it's a facility question we can answer
-            is_facility, facility_response = _is_facility_question(latest_message)
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                return [SlotSet("rooms", None), SlotSet("information_sufficient", "asked")]
+                # Clear the slot to continue collecting
+                return [SlotSet("rooms", None)]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("rooms", None)]
 
         rooms = tracker.get_slot("rooms")
-        
+
         if not rooms:
             return []
-        
+
         is_valid, error_msg, parsed_value = _validate_positive_number(rooms, "number of rooms", allow_zero=False)
-        
+
         if not is_valid:
             dispatcher.utter_message(
                 text=(
@@ -1317,5 +1144,5 @@ class ValidateRooms(Action):
                 )
             )
             return [SlotSet("rooms", None)]
-        
+
         return [SlotSet("rooms", str(int(parsed_value)))]
