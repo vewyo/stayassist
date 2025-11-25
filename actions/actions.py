@@ -444,7 +444,8 @@ class ActionValidateGuests(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         guests = tracker.get_slot("guests")
-        
+        information_sufficient = tracker.get_slot("information_sufficient")
+
         if not guests:
             # Only ask if information_sufficient is NOT "asked"
             if information_sufficient != "asked":
@@ -704,7 +705,7 @@ class ValidateRoomType(Action):
                 dispatcher.utter_message(text="Which room would you like? (standard or suite)")
                 return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
@@ -852,7 +853,7 @@ class ValidateArrivalDate(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
@@ -935,7 +936,7 @@ class ValidateDepartureDate(Action):
                     dispatcher.utter_message(text="Please select your departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
@@ -1049,7 +1050,7 @@ class ValidatePaymentOption(Action):
                 return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
             # Check for no/more questions responses
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
             # If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # But if it's a very short message (1-2 words) that might be "yes", try to interpret it
@@ -1130,7 +1131,7 @@ class ValidateGuests(Action):
                 dispatcher.utter_message(text="For how many guests?")
                 return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
@@ -1210,7 +1211,7 @@ class ValidateNights(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
 
         # Check if the latest user message is a question (not an answer)
@@ -1284,7 +1285,7 @@ class ValidateRooms(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
+                dispatcher.utter_message(text="Of course! What else would you like to know?")
                 return [SlotSet("information_sufficient", None)]
 
         # Check if the latest user message is a question (not an answer)
