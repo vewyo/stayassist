@@ -1,42 +1,42 @@
 # StayAssist Chatbot
 
-Een intelligente chatbot voor hotelboekingen met Rasa Pro en Flask.
+An intelligent chatbot for hotel bookings built with Rasa Pro and Flask.
 
 ## 🚀 Quick Start
 
-### Vereisten
+### Prerequisites
 - Python 3.8+
 - Virtual environment (`.venv`)
 
-### Eenvoudige Commands
+### Simple Commands
 
 ```bash
-# Alles stoppen (als er servers draaien)
+# Stop everything (if servers are running)
 ./stop.sh
 
-# Alles starten
+# Start everything
 ./start.sh
 
-# Trainen en daarna starten
+# Train and then start
 ./train_and_run.sh
 ```
 
-## 📋 Gedetailleerde Instructies
+## 📋 Detailed Instructions
 
-### 1. Virtual Environment Activeren
+### 1. Activate Virtual Environment
 
 ```bash
 source .venv/bin/activate
 ```
 
-### 2. Servers Starten
+### 2. Start Servers
 
-**Optie A: Simpel (aanbevolen)**
+**Option A: Simple (recommended)**
 ```bash
 ./start.sh
 ```
 
-**Optie B: Handmatig**
+**Option B: Manual**
 ```bash
 # Terminal 1: Start Rasa
 rasa run --enable-api --cors "*"
@@ -48,97 +48,97 @@ python app.py
 ### 3. Training
 
 ```bash
-# Alleen trainen
+# Train only
 rasa train
 
-# Trainen en starten
+# Train and start
 ./train_and_run.sh
 ```
 
-### 4. Servers Stoppen
+### 4. Stop Servers
 
-**Simpel:**
+**Simple:**
 ```bash
 ./stop.sh
 ```
 
-**Handmatig:**
-- Druk `Ctrl+C` in beide terminals
+**Manual:**
+- Press `Ctrl+C` in both terminals
 
-## 🌐 Toegang
+## 🌐 Access
 
 - **Chatbot UI:** http://localhost:5001
 - **Rasa API:** http://localhost:5005
 
-## 📁 Project Structuur
+## 📁 Project Structure
 
 ```
 stayassist/
 ├── actions/              # Custom Rasa actions
-│   ├── actions.py        # Validatie en logica
+│   ├── actions.py        # Validation and logic
 │   └── action_ask_guests.py
 ├── data/                 # Rasa training data
-│   ├── flows.yml         # Conversatie flows
-│   ├── nlu.yml          # Intent voorbeelden
+│   ├── flows.yml         # Conversation flows
+│   ├── nlu.yml          # Intent examples
 │   └── patterns.yml     # Pattern matching
-├── domain.yml           # Rasa domain configuratie
-├── config.yml           # Rasa pipeline configuratie
+├── domain.yml           # Rasa domain configuration
+├── config.yml           # Rasa pipeline configuration
 ├── app.py               # Flask backend server
 ├── frontend/            # Frontend UI
 │   ├── index.html
 │   ├── css/
 │   └── js/
-├── start.sh             # Start alles (simpel)
-├── stop.sh              # Stop alles (simpel)
-├── train_and_run.sh     # Train en start
-└── run.sh               # Oude run script
+├── start.sh             # Start everything (simple)
+├── stop.sh              # Stop everything (simple)
+├── train_and_run.sh     # Train and start
+└── run.sh               # Legacy run script
 
 ```
 
 ## 🔧 Features
 
-- ✅ Booking flow met slot collection
-- ✅ Calendar widget voor datum selectie
-- ✅ Facility informatie (pool, parking, etc.)
-- ✅ Accessibility vragen
-- ✅ Robuuste vraag handling tijdens booking
-- ✅ Automatische validatie en foutafhandeling
+- ✅ Booking flow with slot collection
+- ✅ Calendar widget for date selection
+- ✅ Facility information (pool, parking, etc.)
+- ✅ Accessibility questions
+- ✅ Robust question handling during booking
+- ✅ Automatic validation and error handling
 
 ## 🐛 Troubleshooting
 
-### Poort al in gebruik?
+### Port already in use?
 
 ```bash
-# Stop alle servers
+# Stop all servers
 ./stop.sh
 
-# Wacht even en start opnieuw
+# Wait a moment and start again
 ./start.sh
 ```
 
 ### Rasa training errors?
 
 ```bash
-# Check voor syntax errors
+# Check for syntax errors
 rasa data validate
 ```
 
 ### Flask errors?
 
 ```bash
-# Check of Rasa draait
+# Check if Rasa is running
 curl http://localhost:5005/status
 ```
 
 ## 📝 Git Workflow
 
 ```bash
-# Wijzigingen committen en pushen
+# Commit and push changes
 git add -A
-git commit -m "Beschrijving van wijzigingen"
+git commit -m "Description of changes"
 git push origin main
 ```
 
-## 📚 Meer Info
+## 📚 More Info
 
-Voor meer details over Rasa Pro, zie: https://rasa.com/docs/rasa/
+For more details about Rasa Pro, see: https://rasa.com/docs/rasa/
