@@ -704,11 +704,29 @@ class ValidateRoomType(Action):
                 dispatcher.utter_message(text="Which room would you like? (standard or suite)")
                 return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
             return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility, facility_response = _is_facility_question(latest_message)
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         # FIRST: Check if the message is just a number (like "2", "3", etc.) - this is NOT a room type
         # Numbers are answers to "how many guests", not "which room type"
@@ -852,11 +870,29 @@ class ValidateArrivalDate(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
             return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility_check, facility_response_check = _is_facility_question(latest_message)
+            if is_facility_check and facility_response_check:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response_check)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         if is_question or (is_facility and facility_response):
             if is_facility and facility_response:
@@ -935,11 +971,29 @@ class ValidateDepartureDate(Action):
                     dispatcher.utter_message(text="Please select your departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
             return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility_check, facility_response_check = _is_facility_question(latest_message)
+            if is_facility_check and facility_response_check:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response_check)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         if is_question or (is_facility and facility_response):
             if is_facility and facility_response:
@@ -1049,8 +1103,8 @@ class ValidatePaymentOption(Action):
                 return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
             # Check for no/more questions responses
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
             # If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # But if it's a very short message (1-2 words) that might be "yes", try to interpret it
             if len(latest_lower.split()) <= 2:
@@ -1064,6 +1118,24 @@ class ValidatePaymentOption(Action):
                 # Clear both slots: information_sufficient to exit the question loop, payment_option to restart collection
                 return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
             return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility_check, facility_response_check = _is_facility_question(latest_message)
+            if is_facility_check and facility_response_check:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response_check)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         is_question = _is_question(latest_message)
 
@@ -1130,11 +1202,29 @@ class ValidateGuests(Action):
                 dispatcher.utter_message(text="For how many guests?")
                 return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
             # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             # Return empty list to prevent Rasa from automatically continuing
             return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility, facility_response = _is_facility_question(latest_message)
+            if is_facility and facility_response:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         # Check if the latest user message is a question (not an answer)
         is_question = _is_question(latest_message)
@@ -1210,8 +1300,29 @@ class ValidateNights(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
+            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
+            # Return empty list to prevent Rasa from automatically continuing
+            return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility_check, facility_response_check = _is_facility_question(latest_message)
+            if is_facility_check and facility_response_check:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response_check)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         # Check if the latest user message is a question (not an answer)
         is_question = _is_question(latest_message)
@@ -1284,8 +1395,29 @@ class ValidateRooms(Action):
                     dispatcher.utter_message(text="Please select your arrival and departure date:")
                 return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
-                dispatcher.utter_message(text="How can I assist you further?")
-                return [SlotSet("information_sufficient", None)]
+                dispatcher.utter_message(text="What do you want to ask?")
+                return [SlotSet("information_sufficient", "waiting_for_question")]
+            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
+            # Return empty list to prevent Rasa from automatically continuing
+            return []
+
+        # Check if we're waiting for a question from the user
+        if information_sufficient == "waiting_for_question":
+            # Check if the user asked a facility question
+            is_facility_check, facility_response_check = _is_facility_question(latest_message)
+            if is_facility_check and facility_response_check:
+                # Answer the question
+                dispatcher.utter_message(text=facility_response_check)
+                # Ask if they want more info or to continue
+                dispatcher.utter_message(
+                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+                )
+                # Set back to "asked" to loop
+                return [SlotSet("information_sufficient", "asked")]
+            else:
+                # Not a facility question we can answer
+                dispatcher.utter_message(text="I'm not sure about that. What else would you like to know?")
+                return []
 
         # Check if the latest user message is a question (not an answer)
         is_question = _is_question(latest_message)
