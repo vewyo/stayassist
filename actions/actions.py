@@ -527,9 +527,15 @@ class ActionConfirmPaymentReceived(Action):
         tracker: Tracker,
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
-        dispatcher.utter_message(
-            text="Great, I have marked your online payment as received."
-        )
+        payment_option = tracker.get_slot("payment_option")
+        if payment_option == "online":
+            dispatcher.utter_message(
+                text="Perfect! I have received your online payment."
+            )
+        else:
+            dispatcher.utter_message(
+                text="Perfect! I have received your payment information. You can pay at the front desk upon arrival."
+            )
         return []
 
 
@@ -551,6 +557,61 @@ class ActionGenerateBookingNumber(Action):
                 "Please keep it handy for payments, changes, or cancellations."
             )
         )
+        return [SlotSet("booking_reference", booking_reference)]
+
+
+class ActionShowBookingSummary(Action):
+    """Show booking summary with all details and booking number."""
+    def name(self) -> Text:
+        return "action_show_booking_summary"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        # Generate booking number if not exists
+        existing_reference: Optional[Text] = tracker.get_slot("booking_reference")
+        booking_reference = existing_reference or _generate_booking_reference()
+        
+        # Get all booking details
+        guests = tracker.get_slot("guests")
+        room_type = tracker.get_slot("room_type")
+        arrival_date = tracker.get_slot("arrival_date")
+        departure_date = tracker.get_slot("departure_date")
+        payment_option = tracker.get_slot("payment_option")
+        first_name = tracker.get_slot("first_name")
+        last_name = tracker.get_slot("last_name")
+        email = tracker.get_slot("email")
+        
+        # Format dates nicely
+        arrival_formatted = arrival_date if arrival_date else "N/A"
+        departure_formatted = departure_date if departure_date else "N/A"
+        
+        # Format room type
+        room_type_display = "Standard" if room_type == "standard" else "Suite" if room_type == "suite" else room_type or "N/A"
+        
+        # Format payment option
+        payment_display = "Online" if payment_option == "online" else "At front desk" if payment_option == "at_desk" else payment_option or "N/A"
+        
+        # Build summary message
+        summary = f"""Here's your booking summary:
+
+Booking Reference: {booking_reference}
+Name: {first_name or 'N/A'} {last_name or 'N/A'}
+Email: {email or 'N/A'}
+Guests: {guests or 'N/A'}
+Room Type: {room_type_display}
+Arrival Date: {arrival_formatted}
+Departure Date: {departure_formatted}
+Payment: {payment_display}
+
+Your booking reference is {booking_reference}. Please keep it handy for payments, changes, or cancellations."""
+        
+        dispatcher.utter_message(text=summary)
+        
+        # Store booking reference for later cancellation
         return [SlotSet("booking_reference", booking_reference)]
 
 
@@ -638,6 +699,203 @@ class ActionAnswerFacilityQuestion(Action):
             )
 
         dispatcher.utter_message(text=response)
+        
+        # Check if we're in a booking flow - if so, continue with the next question
+        guests = tracker.get_slot("guests")
+        room_type = tracker.get_slot("room_type")
+        arrival_date = tracker.get_slot("arrival_date")
+        departure_date = tracker.get_slot("departure_date")
+        payment_option = tracker.get_slot("payment_option")
+        
+        # If we're in a booking flow, continue with the next question directly
+        if guests is None:
+            dispatcher.utter_message(text="For how many guests?")
+            return []
+        elif room_type is None:
+            dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+            return []
+        elif arrival_date is None:
+            try:
+                today = datetime.now()
+                calendar_data = {
+                    "type": "calendar",
+                    "mode": "booking",
+                    "message": "Please select your arrival and departure date",
+                    "min_date": today.strftime("%Y-%m-%d"),
+                    "arrival_date": None,
+                    "departure_date": None,
+                }
+                dispatcher.utter_message(text="Please select your arrival and departure date:")
+                dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+            except Exception:
+                dispatcher.utter_message(text="Please select your arrival and departure date:")
+            return []
+        elif departure_date is None:
+            dispatcher.utter_message(text="Please select your departure date:")
+            return []
+        elif payment_option is None:
+            dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+            return []
+        
+        return []
+
+
+class ActionHandleContinueInterrupted(Action):
+    """Override pattern_continue_interrupted to prevent unwanted 'Let's continue with book room' message."""
+    def name(self) -> Text:
+        return "action_handle_continue_interrupted"
+    
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        # If information_sufficient is "asked", we've already asked the user if they want to continue
+        # Don't show the default "Let's continue with book room" message
+        information_sufficient = tracker.get_slot("information_sufficient")
+        if information_sufficient == "asked":
+            # We've already asked the question, don't show anything
+            return []
+        
+        # If information_sufficient is not "asked", this is a normal flow continuation
+        # Let the default behavior happen (but we'll suppress it in the frontend)
+        return []
+
+
+class ActionHandleContinue(Action):
+    """Handle 'continue' responses when information_sufficient == 'asked' to prevent fallback.
+    This action MUST return a response to prevent fallback from being triggered."""
+    def name(self) -> Text:
+        return "action_handle_continue"
+    
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        latest_lower = latest_message.lower().strip()
+        
+        information_sufficient = tracker.get_slot("information_sufficient")
+        
+        # CRITICAL: Check if information_sufficient is "asked" FIRST
+        # This must happen BEFORE any other checks to prevent fallback
+        if information_sufficient == "asked":
+            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
+            if any(word in latest_lower for word in yes_words):
+                # Determine which slot is currently being collected by checking which slots are None
+                # The order matters: guests -> room_type -> arrival_date -> departure_date -> payment_option
+                guests = tracker.get_slot("guests")
+                room_type = tracker.get_slot("room_type")
+                arrival_date = tracker.get_slot("arrival_date")
+                departure_date = tracker.get_slot("departure_date")
+                payment_option = tracker.get_slot("payment_option")
+                
+                dispatcher.utter_message(text="Great! Let's continue with your booking.")
+                
+                # Determine which slot we're waiting for based on flow order and respond directly
+                if not guests:
+                    dispatcher.utter_message(text="For how many guests?")
+                    return [SlotSet("guests", None), SlotSet("information_sufficient", None)]
+                elif not room_type:
+                    dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+                    return [SlotSet("room_type", None), SlotSet("information_sufficient", None)]
+                elif not arrival_date:
+                    try:
+                        today = datetime.now()
+                        calendar_data = {
+                            "type": "calendar",
+                            "mode": "booking",
+                            "message": "Please select your arrival and departure date",
+                            "min_date": today.strftime("%Y-%m-%d"),
+                            "arrival_date": None,
+                            "departure_date": None,
+                        }
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                        dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+                    except Exception:
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                    return [SlotSet("arrival_date", None), SlotSet("information_sufficient", None)]
+                elif not departure_date:
+                    dispatcher.utter_message(text="Please select your departure date:")
+                    return [SlotSet("departure_date", None), SlotSet("information_sufficient", None)]
+                elif not payment_option:
+                    dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+                    return [SlotSet("payment_option", None), SlotSet("information_sufficient", None)]
+            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
+                dispatcher.utter_message(text="How can I assist you further?")
+                return [SlotSet("information_sufficient", None)]
+            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet,
+            # return empty list to prevent fallback from being triggered
+            # This ensures the pattern doesn't trigger fallback
+            return []
+        
+        # If not handled, return empty to let other actions handle it
+        return []
+
+
+class ActionDefaultFallback(Action):
+    """Custom fallback action that checks if we're in a 'continue' situation.
+    If information_sufficient == 'asked' and user said 'continue', handle it directly."""
+    def name(self) -> Text:
+        return "action_default_fallback"
+    
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        latest_lower = latest_message.lower().strip() if latest_message else ""
+        information_sufficient = tracker.get_slot("information_sufficient")
+        
+        # CRITICAL: If information_sufficient == "asked" and user said "continue", handle it directly
+        if information_sufficient == "asked":
+            continue_words = ["continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", "sure", "yeah", "yep", "ja", "jep", "oké", "doorgaan", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
+            if any(word in latest_lower for word in continue_words):
+                # Determine which slot is currently being collected
+                guests = tracker.get_slot("guests")
+                room_type = tracker.get_slot("room_type")
+                arrival_date = tracker.get_slot("arrival_date")
+                departure_date = tracker.get_slot("departure_date")
+                payment_option = tracker.get_slot("payment_option")
+                
+                dispatcher.utter_message(text="Great! Let's continue with your booking.")
+                
+                if not guests:
+                    dispatcher.utter_message(text="For how many guests?")
+                    return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
+                elif not room_type:
+                    dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+                    return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
+                elif not arrival_date:
+                    try:
+                        today = datetime.now()
+                        calendar_data = {
+                            "type": "calendar",
+                            "mode": "booking",
+                            "message": "Please select your arrival and departure date",
+                            "min_date": today.strftime("%Y-%m-%d"),
+                            "arrival_date": None,
+                            "departure_date": None,
+                        }
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                        dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+                    except Exception:
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                    return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
+                elif not departure_date:
+                    dispatcher.utter_message(text="Please select your departure date:")
+                    return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
+                elif not payment_option:
+                    dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+                    return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
+        
+        # Default fallback behavior
+        dispatcher.utter_message(text="I'm sorry I am unable to understand you, could you please rephrase?")
         return []
 
 
@@ -695,6 +953,14 @@ class ValidateRoomType(Action):
 
         # Check if user is responding to "is information sufficient" question
         information_sufficient = tracker.get_slot("information_sufficient")
+        room_type = tracker.get_slot("room_type")
+        
+        # Handle special "__continue__" marker value set by slot mapping
+        if room_type == "__continue__":
+            dispatcher.utter_message(text="Great! Let's continue with your booking.")
+            dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+            return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
+        
         if information_sufficient == "asked":
             latest_lower = latest_message.lower().strip()
             yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
@@ -748,22 +1014,22 @@ class ValidateRoomType(Action):
             elif "suite" in room_type_lower:
                 return [SlotSet("room_type", "suite")]
 
-        # SECOND: Check if it's a question about available rooms (only if not a valid selection)
+        # SECOND: Check if it's a facility question/statement (BEFORE checking if room_type is None)
+        # This must happen for BOTH questions and statements (like "pool", "parking", etc.)
+        is_facility, facility_response = _is_facility_question(latest_message)
+        if is_facility and facility_response:
+            dispatcher.utter_message(text=facility_response)
+            # Continue with booking flow - ask for room type
+            dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+            return [SlotSet("room_type", None)]
+        
+        # THIRD: Check if it's a question (but not a facility question)
         is_question = _is_question(latest_message)
         if is_question:
-            is_facility, facility_response = _is_facility_question(latest_message)
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("room_type", None)]
 
-        # If no room_type slot and not a question, it's invalid
+        # If no room_type slot and not a facility question, it's invalid
         if not room_type:
             dispatcher.utter_message(
                 text="I didn't understand that. Please choose either 'standard' or 'suite'."
@@ -825,8 +1091,30 @@ class ValidateArrivalDate(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
-        is_question = _is_question(latest_message)
+        
+        # Check if it's a facility question/statement (BEFORE other checks)
+        # This must happen for BOTH questions and statements (like "pool", "parking", etc.)
         is_facility, facility_response = _is_facility_question(latest_message)
+        if is_facility and facility_response:
+            dispatcher.utter_message(text=facility_response)
+            # Continue with booking flow - show calendar
+            try:
+                today = datetime.now()
+                calendar_data = {
+                    "type": "calendar",
+                    "mode": "booking",
+                    "message": "Please select your arrival and departure date",
+                    "min_date": today.strftime("%Y-%m-%d"),
+                    "arrival_date": None,
+                    "departure_date": None,
+                }
+                dispatcher.utter_message(text="Please select your arrival and departure date:")
+                dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+            except Exception:
+                dispatcher.utter_message(text="Please select your arrival and departure date:")
+            return [SlotSet("arrival_date", None)]
+        
+        is_question = _is_question(latest_message)
 
         # Check if user is responding to "is information sufficient" question
         information_sufficient = tracker.get_slot("information_sufficient")
@@ -861,12 +1149,11 @@ class ValidateArrivalDate(Action):
         if is_question or (is_facility and facility_response):
             if is_facility and facility_response:
                 dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Continue with booking flow - ask for departure date if arrival_date is set
+                arrival_date = tracker.get_slot("arrival_date")
+                if arrival_date:
+                    dispatcher.utter_message(text="Please select your departure date:")
+                return [SlotSet("arrival_date", None)]
             return [SlotSet("arrival_date", None)]
 
         arrival_date = tracker.get_slot("arrival_date")
@@ -908,8 +1195,16 @@ class ValidateDepartureDate(Action):
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
         
-        is_question = _is_question(latest_message)
+        # Check if it's a facility question/statement (BEFORE other checks)
+        # This must happen for BOTH questions and statements (like "pool", "parking", etc.)
         is_facility, facility_response = _is_facility_question(latest_message)
+        if is_facility and facility_response:
+            dispatcher.utter_message(text=facility_response)
+            # Continue with booking flow - ask for departure date
+            dispatcher.utter_message(text="Please select your departure date:")
+            return [SlotSet("departure_date", None)]
+        
+        is_question = _is_question(latest_message)
 
         # Check if user is responding to "is information sufficient" question
         information_sufficient = tracker.get_slot("information_sufficient")
@@ -944,12 +1239,9 @@ class ValidateDepartureDate(Action):
         if is_question or (is_facility and facility_response):
             if is_facility and facility_response:
                 dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
+                # Continue with booking flow - ask for departure date
+                dispatcher.utter_message(text="Please select your departure date:")
+                return [SlotSet("departure_date", None)]
             return [SlotSet("departure_date", None)]
 
         departure_date = tracker.get_slot("departure_date")
@@ -1065,19 +1357,18 @@ class ValidatePaymentOption(Action):
                 return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
             return []
 
+        # Check if it's a facility question/statement (BEFORE checking if payment_option is None)
+        # This must happen for BOTH questions and statements (like "pool", "parking", etc.)
+        is_facility, facility_response = _is_facility_question(latest_message)
+        if is_facility and facility_response:
+            dispatcher.utter_message(text=facility_response)
+            # Continue with booking flow - ask for payment option
+            dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+            return [SlotSet("payment_option", None)]
+        
+        # Check if it's a question (but not a facility question)
         is_question = _is_question(latest_message)
-
-        # Check if it's a question
         if is_question:
-            is_facility, facility_response = _is_facility_question(latest_message)
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and not ask if it's "asked"
-                return [SlotSet("information_sufficient", "asked")]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("payment_option", None)]
 
@@ -1096,14 +1387,303 @@ class ValidatePaymentOption(Action):
 
         # Normalize payment option
         if any(word in payment_option_lower for word in ["desk", "front desk", "at desk", "reception", "counter"]):
-            return [SlotSet("payment_option", "at_desk")]
+            # Check if we already have name and email - if so, show summary
+            first_name = tracker.get_slot("first_name")
+            last_name = tracker.get_slot("last_name")
+            email = tracker.get_slot("email")
+            
+            if first_name and last_name and email:
+                # All info collected, show summary (will be handled by validate_email)
+                return [SlotSet("payment_option", "at_desk")]
+            else:
+                # Confirm payment and start collecting name/email
+                dispatcher.utter_message(
+                    text="Perfect! I have received your payment information. You can pay at the front desk upon arrival."
+                )
+                # Set payment_option and clear slots to trigger flow collection
+                # Don't ask here - let the validate actions or Rasa's automatic utter_ask handle it
+                if not first_name:
+                    return [SlotSet("payment_option", "at_desk"), SlotSet("first_name", None)]
+                elif not last_name:
+                    return [SlotSet("payment_option", "at_desk"), SlotSet("last_name", None)]
+                elif not email:
+                    return [SlotSet("payment_option", "at_desk"), SlotSet("email", None)]
+                return [SlotSet("payment_option", "at_desk")]
         elif any(word in payment_option_lower for word in ["online", "now", "pay now", "card", "credit", "debit"]):
-            return [SlotSet("payment_option", "online")]
+            # Check if we already have name and email - if so, show summary
+            first_name = tracker.get_slot("first_name")
+            last_name = tracker.get_slot("last_name")
+            email = tracker.get_slot("email")
+            
+            if first_name and last_name and email:
+                # All info collected, show summary (will be handled by validate_email)
+                return [SlotSet("payment_option", "online")]
+            else:
+                # Confirm payment and start collecting name/email
+                dispatcher.utter_message(
+                    text="Perfect! I have received your online payment."
+                )
+                # Set payment_option and clear slots to trigger flow collection
+                # Don't ask here - let the validate actions or Rasa's automatic utter_ask handle it
+                if not first_name:
+                    return [SlotSet("payment_option", "online"), SlotSet("first_name", None)]
+                elif not last_name:
+                    return [SlotSet("payment_option", "online"), SlotSet("last_name", None)]
+                elif not email:
+                    return [SlotSet("payment_option", "online"), SlotSet("email", None)]
+                return [SlotSet("payment_option", "online")]
         else:
             dispatcher.utter_message(
                 text="I didn't understand that. Please choose either 'at the front desk' or 'online'."
             )
             return [SlotSet("payment_option", None)]
+
+
+class ValidateFirstName(Action):
+    """Validate first name - automatically called by Rasa when first_name slot is set."""
+    def name(self) -> Text:
+        return "validate_first_name"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        first_name = tracker.get_slot("first_name")
+        last_name = tracker.get_slot("last_name")
+        email = tracker.get_slot("email")
+        payment_option = tracker.get_slot("payment_option")
+        
+        # Only proceed if we're in a payment flow
+        if not payment_option:
+            return []
+        
+        # If first_name is set (user provided it), move to next step
+        if first_name:
+            if not last_name:
+                # Don't ask here - let validate_last_name or Rasa handle it
+                return []
+            elif not email:
+                # Don't ask here - let validate_email or Rasa handle it
+                return []
+            # All info collected, summary will be shown by validate_email
+            return []
+        
+        # If first_name is not set, Rasa will automatically call utter_ask_first_name
+        # Don't ask here to avoid duplicate messages
+        return []
+
+
+class ValidateLastName(Action):
+    """Validate last name - automatically called by Rasa when last_name slot is set."""
+    def name(self) -> Text:
+        return "validate_last_name"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        first_name = tracker.get_slot("first_name")
+        last_name = tracker.get_slot("last_name")
+        email = tracker.get_slot("email")
+        payment_option = tracker.get_slot("payment_option")
+        
+        # Only proceed if we're in a payment flow
+        if not payment_option:
+            return []
+        
+        # If last_name is set (user provided it), move to next step
+        if last_name:
+            if not email:
+                # Don't ask here - let validate_email or Rasa handle it
+                return []
+            # All info collected, summary will be shown by validate_email
+            return []
+        
+        # If last_name is not set, Rasa will automatically call utter_ask_last_name
+        # Don't ask here to avoid duplicate messages
+        return []
+
+
+class ValidateEmail(Action):
+    """Validate email - automatically called by Rasa when email slot is set."""
+    def name(self) -> Text:
+        return "validate_email"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        first_name = tracker.get_slot("first_name")
+        last_name = tracker.get_slot("last_name")
+        email = tracker.get_slot("email")
+        payment_option = tracker.get_slot("payment_option")
+        
+        if not email:
+            # Don't ask here - let Rasa's automatic utter_ask_email handle it
+            return []
+        
+        # If we have all info (first_name, last_name, email, payment_option), show summary
+        if first_name and last_name and email and payment_option:
+            # Generate booking number if not exists
+            existing_reference: Optional[Text] = tracker.get_slot("booking_reference")
+            booking_reference = existing_reference or _generate_booking_reference()
+            
+            # Get all booking details
+            guests = tracker.get_slot("guests")
+            room_type = tracker.get_slot("room_type")
+            arrival_date = tracker.get_slot("arrival_date")
+            departure_date = tracker.get_slot("departure_date")
+            
+            # Format dates nicely
+            arrival_formatted = arrival_date if arrival_date else "N/A"
+            departure_formatted = departure_date if departure_date else "N/A"
+            
+            # Format room type
+            room_type_display = "Standard" if room_type == "standard" else "Suite" if room_type == "suite" else room_type or "N/A"
+            
+            # Format payment option
+            payment_display = "Online" if payment_option == "online" else "At front desk" if payment_option == "at_desk" else payment_option or "N/A"
+            
+            # Build summary message
+            summary = f"""Here's your booking summary:
+
+Booking Reference: {booking_reference}
+Name: {first_name or 'N/A'} {last_name or 'N/A'}
+Email: {email or 'N/A'}
+Guests: {guests or 'N/A'}
+Room Type: {room_type_display}
+Arrival Date: {arrival_formatted}
+Departure Date: {departure_formatted}
+Payment: {payment_display}
+
+Your booking reference is {booking_reference}. Please keep it handy for payments, changes, or cancellations."""
+            
+            dispatcher.utter_message(text=summary)
+            
+            # Store booking reference for later cancellation
+            return [SlotSet("booking_reference", booking_reference)]
+        
+        return []
+
+
+class ValidateInformationSufficient(Action):
+    """Validate information_sufficient slot - handles 'continue' responses.
+    This action MUST be called BEFORE fallback to prevent utter_ask_rephrase."""
+    def name(self) -> Text:
+        return "validate_information_sufficient"
+    
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        latest_lower = latest_message.lower().strip() if latest_message else ""
+        information_sufficient = tracker.get_slot("information_sufficient")
+        
+        # CRITICAL: Handle "continue_detected" FIRST - this comes from slot mapping
+        if information_sufficient == "continue_detected":
+            # Determine which slot is currently being collected
+            guests = tracker.get_slot("guests")
+            room_type = tracker.get_slot("room_type")
+            arrival_date = tracker.get_slot("arrival_date")
+            departure_date = tracker.get_slot("departure_date")
+            payment_option = tracker.get_slot("payment_option")
+            
+            dispatcher.utter_message(text="Great! Let's continue with your booking.")
+            
+            # Ask for the appropriate slot based on flow order
+            if not guests:
+                dispatcher.utter_message(text="For how many guests?")
+                return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
+            elif not room_type:
+                dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+                return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
+            elif not arrival_date:
+                try:
+                    today = datetime.now()
+                    calendar_data = {
+                        "type": "calendar",
+                        "mode": "booking",
+                        "message": "Please select your arrival and departure date",
+                        "min_date": today.strftime("%Y-%m-%d"),
+                        "arrival_date": None,
+                        "departure_date": None,
+                    }
+                    dispatcher.utter_message(text="Please select your arrival and departure date:")
+                    dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+                except Exception:
+                    dispatcher.utter_message(text="Please select your arrival and departure date:")
+                return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
+            elif not departure_date:
+                dispatcher.utter_message(text="Please select your departure date:")
+                return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
+            elif not payment_option:
+                dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+                return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
+        
+        # CRITICAL: Check if information_sufficient is "asked" - handle "continue" response
+        if information_sufficient == "asked":
+            yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
+            if any(word in latest_lower for word in yes_words):
+                # Determine which slot is currently being collected
+                guests = tracker.get_slot("guests")
+                room_type = tracker.get_slot("room_type")
+                arrival_date = tracker.get_slot("arrival_date")
+                departure_date = tracker.get_slot("departure_date")
+                payment_option = tracker.get_slot("payment_option")
+                
+                dispatcher.utter_message(text="Great! Let's continue with your booking.")
+                
+                if not guests:
+                    dispatcher.utter_message(text="For how many guests?")
+                    return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
+                elif not room_type:
+                    dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+                    return [SlotSet("information_sufficient", None), SlotSet("room_type", None)]
+                elif not arrival_date:
+                    try:
+                        today = datetime.now()
+                        calendar_data = {
+                            "type": "calendar",
+                            "mode": "booking",
+                            "message": "Please select your arrival and departure date",
+                            "min_date": today.strftime("%Y-%m-%d"),
+                            "arrival_date": None,
+                            "departure_date": None,
+                        }
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                        dispatcher.utter_message(text="", custom=json.dumps(calendar_data))
+                    except Exception:
+                        dispatcher.utter_message(text="Please select your arrival and departure date:")
+                    return [SlotSet("information_sufficient", None), SlotSet("arrival_date", None)]
+                elif not departure_date:
+                    dispatcher.utter_message(text="Please select your departure date:")
+                    return [SlotSet("information_sufficient", None), SlotSet("departure_date", None)]
+                elif not payment_option:
+                    dispatcher.utter_message(text="Would you like to pay at the front desk or complete the payment online now?")
+                    return [SlotSet("information_sufficient", None), SlotSet("payment_option", None)]
+            elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
+                dispatcher.utter_message(text="How can I assist you further?")
+                return [SlotSet("information_sufficient", None)]
+            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet,
+            # return empty list to prevent fallback from being triggered
+            return []
+        
+        # Handle "more_info_needed" - user wants more information
+        if information_sufficient == "more_info_needed":
+            dispatcher.utter_message(text="How can I assist you further?")
+            return [SlotSet("information_sufficient", None)]
+        
+        return []
 
 
 class ValidateGuests(Action):
@@ -1118,44 +1698,98 @@ class ValidateGuests(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        latest_lower = latest_message.lower().strip() if latest_message else ""
 
         # Check if user is responding to "is information sufficient" question
         information_sufficient = tracker.get_slot("information_sufficient")
+        guests = tracker.get_slot("guests")
+        
+        # CRITICAL FIRST CHECK: Handle "CONTINUE_REQUESTED" value set by guests slot mapping
+        # This happens when user says "continue" after information_sufficient question
+        if guests == "CONTINUE_REQUESTED":
+            dispatcher.utter_message(text="Great! Let's continue with your booking.")
+            dispatcher.utter_message(text="For how many guests?")
+            return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
+        
+        # Handle "continue_detected" value set by information_sufficient slot mapping or validate_information_sufficient
+        # This is handled by validate_information_sufficient, so don't duplicate here
+        if information_sufficient == "continue_detected":
+            # Let validate_information_sufficient handle this
+            return []
+        
+        # Handle "more_info_needed" value - user wants more information
+        if information_sufficient == "more_info_needed":
+            dispatcher.utter_message(text="How can I assist you further?")
+            return [SlotSet("information_sufficient", None)]
+        
+        # CRITICAL: Check for "continue" response when information_sufficient == "asked"
+        # This handles cases where slot mapping didn't set "continue_detected" yet
+        # This MUST happen BEFORE fallback is triggered - handle it DIRECTLY here
         if information_sufficient == "asked":
-            latest_lower = latest_message.lower().strip()
             yes_words = ["yes", "yeah", "yep", "sure", "ok", "okay", "continue", "go ahead", "ja", "jep", "oké", "doorgaan", "proceed", "let's go", "lets go", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
             if any(word in latest_lower for word in yes_words):
+                # Handle continue DIRECTLY here to prevent fallback
                 dispatcher.utter_message(text="Great! Let's continue with your booking.")
-                # CRITICAL: Ask for guests again - clear the slot to restart collection
                 dispatcher.utter_message(text="For how many guests?")
                 return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
             elif any(word in latest_lower for word in ["no", "nope", "nee", "more", "else", "other", "another"]) and "no more" not in latest_lower and "don't need" not in latest_lower:
                 dispatcher.utter_message(text="How can I assist you further?")
                 return [SlotSet("information_sufficient", None)]
-            # CRITICAL: If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
-            # Return empty list to prevent Rasa from automatically continuing
+            # If information_sufficient is "asked" but user hasn't responded yes/no yet, wait
             return []
+        
+        # Handle special "__continue__" marker value set by slot mapping or action_handle_continue
+        if guests == "__continue__":
+            dispatcher.utter_message(text="Great! Let's continue with your booking.")
+            dispatcher.utter_message(text="For how many guests?")
+            return [SlotSet("information_sufficient", None), SlotSet("guests", None)]
 
         # Check if the latest user message is a question (not an answer)
+        # Check if it's a facility question/statement (BEFORE checking if guests is None)
+        # This must happen for BOTH questions and statements (like "pool", "parking", etc.)
+        is_facility, facility_response = _is_facility_question(latest_message)
+        if is_facility and facility_response:
+            dispatcher.utter_message(text=facility_response)
+            # Continue with booking flow - ask for guests
+            dispatcher.utter_message(text="For how many guests?")
+            return [SlotSet("guests", None)]
+        
+        # Check if it's a question (but not a facility question)
         is_question = _is_question(latest_message)
-
         if is_question:
-            # Check if it's a facility question we can answer
-            is_facility, facility_response = _is_facility_question(latest_message)
-            if is_facility and facility_response:
-                dispatcher.utter_message(text=facility_response)
-                dispatcher.utter_message(
-                    text="I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
-                )
-                # CRITICAL: Only set information_sufficient to "asked", keep slot as None
-                # The validate action will check information_sufficient and prevent utter_ask_guests
-                return [SlotSet("information_sufficient", "asked")]
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("guests", None)]
 
         if not guests:
             # Only ask if information_sufficient is NOT "asked"
-            if information_sufficient != "asked":
+            # Also check if action_ask_guests was just called to avoid duplicate messages
+            # Check the last few events to see if action_ask_guests was called
+            events_list = list(tracker.events)
+            action_ask_guests_called = False
+            action_ask_guests_message_sent = False
+            
+            # Check for action_ask_guests in recent events
+            for i in range(len(events_list) - 1, max(-1, len(events_list) - 15), -1):
+                event = events_list[i]
+                # Check if action_ask_guests was called
+                if hasattr(event, 'action_name') and event.action_name == 'action_ask_guests':
+                    action_ask_guests_called = True
+                    # Check if a message was sent after this action
+                    for j in range(i + 1, min(len(events_list), i + 5)):
+                        next_event = events_list[j]
+                        if hasattr(next_event, 'text') and 'how many guests' in next_event.text.lower():
+                            action_ask_guests_message_sent = True
+                            break
+                    break
+                # Also check if "For how many guests?" was already sent
+                if hasattr(event, 'text') and 'for how many guests' in event.text.lower():
+                    action_ask_guests_message_sent = True
+                    break
+            
+            # Only ask if:
+            # 1. information_sufficient is NOT "asked" (we're not waiting for user to say continue)
+            # 2. action_ask_guests was NOT called OR no message was sent yet
+            if information_sufficient != "asked" and not action_ask_guests_message_sent:
                 dispatcher.utter_message(text="For how many guests?")
             return []
         

@@ -47,9 +47,9 @@ python app.py
 
 ### 3. Training
 
-```bash
+   ```bash
 # Train only
-rasa train
+   rasa train
 
 # Train and start
 ./train_and_run.sh
@@ -125,14 +125,14 @@ rasa data validate
 
 ### Flask errors?
 
-```bash
+   ```bash
 # Check if Rasa is running
 curl http://localhost:5005/status
-```
+   ```
 
 ## 📝 Git Workflow
 
-```bash
+   ```bash
 # Commit and push changes
 git add -A
 git commit -m "Description of changes"

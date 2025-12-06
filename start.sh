@@ -11,6 +11,13 @@ sleep 2
 echo "Activating virtual environment..."
 source .venv/bin/activate
 
+# Fix for OpenBLAS crashes on macOS ARM64
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
 echo "Starting Rasa server..."
 rasa run --enable-api --cors "*" &
 RASA_PID=$!

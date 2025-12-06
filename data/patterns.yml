@@ -9,3 +9,13 @@ flows:
     name: pattern search
     steps:
       - action: utter_free_chitchat_response
+  pattern_handle_continue:
+    description: Handle "continue" response when information_sufficient == "asked" in booking flow. This pattern triggers before fallback to ensure "continue" is properly handled. This has HIGHEST PRIORITY and must execute before pattern_cannot_handle. This pattern MUST be triggered when information_sufficient slot equals "asked" and user message contains "continue", "yes", "ok", etc.
+    name: pattern handle continue
+    steps:
+      - action: action_handle_continue
+  pattern_continue_interrupted:
+    description: Override the default pattern_continue_interrupted to prevent "Let's continue with book room" when information_sufficient is "asked"
+    name: pattern continue interrupted
+    steps:
+      - action: action_handle_continue_interrupted

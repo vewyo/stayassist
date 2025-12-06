@@ -360,19 +360,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 hideTypingIndicator();
 
                 try {
-                    // Check if data is in the expected format
-                    if (data.fallback_response) {
-                        // Handle fallback response (error case)
+                // Check if data is in the expected format
+                if (data.fallback_response) {
+                    // Handle fallback response (error case)
                         if (Array.isArray(data.fallback_response) && data.fallback_response.length > 0) {
                             addMessageToChat('bot', data.fallback_response[0].text || 'I apologize, but I encountered an issue processing your request.', responseTimestamp);
                         } else {
                             addMessageToChat('bot', 'I apologize, but I encountered an issue processing your request. Please try again.', responseTimestamp);
                         }
-                        return;
-                    }
+                    return;
+                }
 
-                    // Process Rasa response
-                    handleRasaResponse(data, responseTimestamp);
+                // Process Rasa response
+                handleRasaResponse(data, responseTimestamp);
                 } catch (error) {
                     console.error('Error processing Rasa response:', error);
                     addMessageToChat('bot', 'I apologize, but I encountered an issue processing your request. Please try again.', responseTimestamp);
@@ -471,11 +471,81 @@ document.addEventListener('DOMContentLoaded', () => {
         // CRITICAL: Filter out "Let's continue with book room" messages - these are unwanted
         allMessages = allMessages.filter(msg => {
             const msgLower = msg.toLowerCase();
-            // Filter out "Let's continue" messages
-            if (msgLower.includes("let's continue") || msgLower.includes("lets continue")) {
+            // Filter out "Let's continue" messages (including "Let's continue with book room")
+            if (msgLower.includes("let's continue") || msgLower.includes("lets continue") || 
+                msgLower.includes("let's continue with") || msgLower.includes("lets continue with") ||
+                msgLower.includes("let's continue with book") || msgLower.includes("lets continue with book")) {
                 console.log('Filtered out unwanted "Let\'s continue" message:', msg);
                 return false;
             }
+            // Also filter out messages that appear right after the information sufficient question
+            // These are unwanted LLM responses
+            if (msgLower.includes("continue") && (msgLower.includes("book") || msgLower.includes("booking"))) {
+                console.log('Filtered out unwanted continue/booking message:', msg);
+                return false;
+            }
+            return true;
+        });
+        
+        // CRITICAL: Filter out fallback messages when they appear after "I hope I've provided you with sufficient information"
+        // Check if previous message was the information sufficient question (both in DOM and in current response)
+        const previousMessages = Array.from(document.querySelectorAll('.message-text')).slice(-5);
+        const hasInfoQuestionInDOM = previousMessages.some(prevMsg => {
+            const prevText = prevMsg.textContent.toLowerCase();
+            return prevText.includes("i hope i've provided you with sufficient information") ||
+                   prevText.includes("is there anything else you'd like to know") ||
+                   prevText.includes("shall we continue with your booking");
+        });
+        
+        // Also check if the current response contains the info question
+        const hasInfoQuestionInResponse = allMessages.some(msg => {
+            const msgLower = msg.toLowerCase();
+            return msgLower.includes("i hope i've provided you with sufficient information") ||
+                   msgLower.includes("is there anything else you'd like to know") ||
+                   msgLower.includes("shall we continue with your booking");
+        });
+        
+        const hasInfoQuestion = hasInfoQuestionInDOM || hasInfoQuestionInResponse;
+        
+        // Filter out fallback messages
+        const fallbackPhrases = [
+            "i'm sorry i am unable to understand you",
+            "could you please rephrase",
+            "i'm sorry",
+            "unable to understand",
+            "please rephrase",
+            "utter_ask_rephrase"
+        ];
+        
+        allMessages = allMessages.filter(msg => {
+            const msgLower = msg.toLowerCase();
+            const msgNormalized = msgLower.trim();
+            
+            // ALWAYS filter "placeholder" messages - these are internal Rasa messages
+            // Check both exact match and if it contains "placeholder"
+            if (msgNormalized === "placeholder" || msgNormalized.includes("placeholder")) {
+                console.log('🚫 Filtered out placeholder message:', msg);
+                return false;
+            }
+            
+            const isFallback = fallbackPhrases.some(phrase => msgLower.includes(phrase));
+            
+            // ALWAYS filter fallback if info question was asked (in DOM or in response)
+            if (isFallback && hasInfoQuestion) {
+                console.log('🚫 Filtered out fallback message after info question:', msg);
+                return false;
+            }
+            
+            // Also filter fallback if it appears right after "Great! Let's continue" in the same response
+            const msgIndex = allMessages.indexOf(msg);
+            if (msgIndex > 0) {
+                const prevMsgInResponse = allMessages[msgIndex - 1].toLowerCase();
+                if (prevMsgInResponse.includes("great") && prevMsgInResponse.includes("continue") && isFallback) {
+                    console.log('🚫 Filtered out fallback message after "Great! Let\'s continue":', msg);
+                    return false;
+                }
+            }
+            
             return true;
         });
         
@@ -492,6 +562,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
+        // Filter out "What else can I help you with?" after booking summaries
+        const bookingSummaryIndicators = ["booking reference", "booking summary", "your booking reference is"];
+        const hasBookingSummary = allMessages.some(msg => {
+            const msgLower = msg.toLowerCase();
+            return bookingSummaryIndicators.some(indicator => msgLower.includes(indicator));
+        });
+        if (hasBookingSummary) {
+            allMessages = allMessages.filter(msg => {
+                const msgLower = msg.toLowerCase();
+                const isHelpMessage = msgLower.includes("what else can i help") || 
+                                    msgLower.includes("how can i assist") || 
+                                    msgLower.includes("how can i help");
+                if (isHelpMessage) {
+                    console.log('🚫 Frontend: Filtered "What else can I help" after booking summary:', msg);
+                    return false;
+                }
+                return true;
+            });
+        }
+        
+        // Filter exact duplicates (case-insensitive)
+        const uniqueMessages = [];
+        const seenNormalized = new Set();
+        allMessages.forEach(msg => {
+            const normalized = msg.toLowerCase().trim();
+            if (!seenNormalized.has(normalized)) {
+                seenNormalized.add(normalized);
+                uniqueMessages.push(msg);
+            } else {
+                console.log('🚫 Frontend: Filtered duplicate message:', msg);
+            }
+        });
+        allMessages = uniqueMessages;
+        
         // If we have multiple messages and the first one is a greeting, only show the first one
         if (allMessages.length > 1) {
             const firstMessage = allMessages[0].toLowerCase();
@@ -499,17 +603,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (firstMessage.includes('welcome') || firstMessage.includes('how can i assist') || firstMessage.includes('how can i help')) {
                 // Only show the first message (the greeting)
                 allMessages = [allMessages[0]];
-            } else {
-                // For non-greetings, filter exact duplicates
-                const uniqueMessages = [];
-                allMessages.forEach(msg => {
-                    if (!seenMessages.has(msg)) {
-                        seenMessages.add(msg);
-                        uniqueMessages.push(msg);
-                    }
-                });
-                allMessages = uniqueMessages;
             }
+        }
+        
+        // CRITICAL: Filter duplicate "For how many guests?" messages
+        const guestsQuestionCount = allMessages.filter(msg => 
+            msg.toLowerCase().includes("for how many guests")
+        ).length;
+        if (guestsQuestionCount > 1) {
+            // Keep only the first occurrence
+            let foundFirst = false;
+            allMessages = allMessages.filter(msg => {
+                if (msg.toLowerCase().includes("for how many guests")) {
+                    if (!foundFirst) {
+                        foundFirst = true;
+                        return true;
+                    }
+                    console.log('🚫 Frontend: Filtered duplicate "For how many guests?":', msg);
+                    return false;
+                }
+                return true;
+            });
         }
         
         // If there's already a greeting in the chat and we're getting another greeting, filter it out
@@ -525,7 +639,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToChat('bot', messageText, timestamp);
             messageAdded = true;
 
-            // Save bot response to database
+                    // Save bot response to database
             try {
                 if (window.DB && window.DB.saveConversation) {
                     window.DB.saveConversation({
@@ -565,12 +679,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             return;
         }
-        
+
         // Process actions from Rasa
         if (response.actions && Array.isArray(response.actions) && response.actions.length > 0) {
             response.actions.forEach(action => {
                 try {
-                    executeAction(action, response.context);
+                executeAction(action, response.context);
                 } catch (actionError) {
                     console.error('Error executing action:', actionError);
                 }
@@ -580,10 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update conversation context
         if (response.context && typeof response.context === 'object') {
             try {
-                conversationContext = {
-                    ...conversationContext,
-                    ...response.context
-                };
+            conversationContext = {
+                ...conversationContext,
+                ...response.context
+            };
             } catch (contextError) {
                 console.error('Error updating context:', contextError);
             }
@@ -621,8 +735,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 // For non-greetings, show the fallback message
-                addMessageToChat('bot', "I'm processing your request. Please give me a moment.", timestamp);
-            }
+            addMessageToChat('bot', "I'm processing your request. Please give me a moment.", timestamp);
+        }
     }
 
     /**
@@ -1214,7 +1328,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Just log the error for debugging
         });
     }
-    
+
     function markConversationStarted() {
         if (hasConversationStarted) return;
         hasConversationStarted = true;

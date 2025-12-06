@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import requests
 import logging
 from flask import Flask, send_from_directory, request, jsonify
@@ -48,7 +49,105 @@ def send_message():
     data = request.json
     message = data.get('message')
     context = data.get('context', {})
-
+    
+    logger.info(f"🔵 Received message: '{message}', context sender_id: {context.get('sender_id', 'user')}")
+    
+    # CRITICAL: Handle "continue" response when information_sufficient == "asked"
+    # This MUST happen BEFORE calling Rasa to prevent fallback from being triggered
+    continue_words = ["continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", "sure", "yeah", "yep", "ja", "jep", "oké", "doorgaan", "i dont need anymore", "i don't need anymore", "no more", "no more questions"]
+    is_continue_message = message and any(word in message.lower().strip() for word in continue_words)
+    logger.info(f"🔵 Is continue message? {is_continue_message}, message: '{message}'")
+    
+    if is_continue_message:
+        # Get current conversation state from Rasa
+        sender_id = context.get('sender_id', 'user')
+        logger.info(f"🔵 Checking tracker for sender_id: {sender_id}")
+        
+        try:
+            # Make a request to get current tracker state
+            tracker_url = f"{os.environ.get('RASA_URL', DEFAULT_RASA_URL).rstrip('/')}/conversations/{sender_id}/tracker"
+            logger.info(f"🔵 Fetching tracker from: {tracker_url}")
+            tracker_response = requests.get(tracker_url, timeout=5)
+            logger.info(f"🔵 Tracker response status: {tracker_response.status_code}")
+            
+            if tracker_response.status_code == 200:
+                tracker_data = tracker_response.json()
+                slots = tracker_data.get('slots', {})
+                information_sufficient = slots.get('information_sufficient')
+                logger.info(f"🔵 CRITICAL CHECK: message='{message}', information_sufficient={information_sufficient}, all slots: {slots}")
+                
+                if information_sufficient == "asked":
+                    logger.info(f"✅✅✅ Detected 'continue' when information_sufficient == 'asked', responding directly WITHOUT calling Rasa")
+                    # Determine which slot is currently being collected
+                    guests = slots.get('guests')
+                    room_type = slots.get('room_type')
+                    arrival_date = slots.get('arrival_date')
+                    departure_date = slots.get('departure_date')
+                    payment_option = slots.get('payment_option')
+                    
+                    logger.info(f"🔵 Current slots: guests={guests}, room_type={room_type}, arrival_date={arrival_date}, departure_date={departure_date}, payment_option={payment_option}")
+                    
+                    # Respond directly without going through Rasa to avoid fallback
+                    messages = [{"text": "Great! Let's continue with your booking."}]
+                    
+                    if not guests:
+                        messages.append({"text": "For how many guests?"})
+                    elif not room_type:
+                        messages.append({"text": "Which room would you like? (standard or suite)"})
+                    elif not arrival_date:
+                        messages.append({"text": "Please select your arrival and departure date:"})
+                    elif not departure_date:
+                        messages.append({"text": "Please select your departure date:"})
+                    elif not payment_option:
+                        messages.append({"text": "Would you like to pay at the front desk or complete the payment online now?"})
+                    
+                    # Update slots in Rasa tracker for consistency
+                    events_url = f"{os.environ.get('RASA_URL', DEFAULT_RASA_URL).rstrip('/')}/conversations/{sender_id}/tracker/events"
+                    slot_events = [
+                        {"event": "slot", "name": "information_sufficient", "value": None}
+                    ]
+                    # Also clear the slot that we're asking for
+                    if not guests:
+                        slot_events.append({"event": "slot", "name": "guests", "value": None})
+                    elif not room_type:
+                        slot_events.append({"event": "slot", "name": "room_type", "value": None})
+                    elif not arrival_date:
+                        slot_events.append({"event": "slot", "name": "arrival_date", "value": None})
+                    elif not departure_date:
+                        slot_events.append({"event": "slot", "name": "departure_date", "value": None})
+                    elif not payment_option:
+                        slot_events.append({"event": "slot", "name": "payment_option", "value": None})
+                    
+                    try:
+                        for event in slot_events:
+                            requests.post(events_url, json=event, timeout=5)
+                        logger.info(f"🔵 Updated slots in Rasa tracker")
+                    except Exception as e:
+                        logger.warning(f"Could not update slots in Rasa: {e}")
+                    
+                    # Update context
+                    if 'slots' not in context:
+                        context['slots'] = {}
+                    context['slots']['information_sufficient'] = None
+                    
+                    # Return response directly without calling Rasa - THIS PREVENTS FALLBACK
+                    logger.info(f"✅✅✅ Returning direct response for 'continue': {messages}")
+                    return jsonify({
+                        "messages": messages,
+                        "context": context,
+                        "actions": []
+                    })
+                else:
+                    logger.info(f"🔵 information_sufficient is '{information_sufficient}', not 'asked', will proceed with normal Rasa flow")
+            else:
+                logger.warning(f"🔵 Tracker response not 200: {tracker_response.status_code}, {tracker_response.text}")
+        except Exception as e:
+            logger.error(f"🔵 ERROR checking tracker state: {e}", exc_info=True)
+    
+    # Store last message in context for fallback filtering (only if we didn't return early)
+    if message:
+        context['last_message'] = message
+    
     # Reset booking slots when starting a new booking
     booking_phrases = ["book a room", "book room", "i want to book", "reserve a room", "make a reservation", "reserve", "booking"]
     if message and any(phrase in message.lower() for phrase in booking_phrases):
@@ -88,6 +187,25 @@ def send_message():
         response.raise_for_status()
         data = response.json()
         logger.info(f"Raw Rasa response: {json.dumps(data, indent=2)}")
+        
+        # Update context with last message for fallback filtering
+        if message:
+            context['last_message'] = message
+            # Also get current slots from Rasa to check information_sufficient
+            sender_id = context.get('sender_id', 'user')
+            try:
+                tracker_url = f"{os.environ.get('RASA_URL', DEFAULT_RASA_URL).rstrip('/')}/conversations/{sender_id}/tracker"
+                tracker_response = requests.get(tracker_url, timeout=5)
+                if tracker_response.status_code == 200:
+                    tracker_data = tracker_response.json()
+                    slots = tracker_data.get('slots', {})
+                    if 'slots' not in context:
+                        context['slots'] = {}
+                    context['slots']['information_sufficient'] = slots.get('information_sufficient')
+                    logger.info(f"Retrieved information_sufficient from tracker: {slots.get('information_sufficient')}")
+            except Exception as e:
+                logger.warning(f"Could not get tracker state: {e}")
+        
         processed = process_rasa_response(data, context)
         logger.info(f"Processed response: {json.dumps(processed, indent=2)}")
         return jsonify(processed)
@@ -124,11 +242,85 @@ def process_rasa_response(response, original_context):
         logger.warning("Empty response from Rasa, but this might be expected for date confirmations")
         return result
 
+    # CRITICAL: Check if user said "continue" - if so, ALWAYS filter fallback
+    last_message = original_context.get('last_message', '').lower().strip() if original_context.get('last_message') else ''
+    continue_words = ["continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", "sure", "yeah", "yep", "ja", "jep", "oké", "doorgaan"]
+    # Use word boundaries to match whole words only, not substrings (prevents "book room" from matching "go" in "go ahead")
+    is_continue = any(re.search(r'\b' + re.escape(word) + r'\b', last_message) for word in continue_words) if last_message else False
+    
+    # Get information_sufficient from context
+    information_sufficient = original_context.get('slots', {}).get('information_sufficient') if original_context.get('slots') else None
+    
+    # Check if response contains the info question
+    response_text = ' '.join([item.get("text", "") for item in response if item.get("text")])
+    has_info_question = "i hope i've provided you with sufficient information" in response_text.lower()
+    
+    logger.info(f"🚨 FALLBACK FILTERING: last_message='{last_message}', is_continue={is_continue}, information_sufficient={information_sufficient}, has_info_question={has_info_question}")
+    
+    # Filter out fallback messages - ALWAYS filter if user said "continue"
+    fallback_phrases = [
+        "i'm sorry i am unable to understand you",
+        "could you please rephrase",
+        "i'm sorry",
+        "unable to understand",
+        "please rephrase",
+        "utter_ask_rephrase"
+    ]
+    
+    # Track seen messages to prevent duplicates
+    seen_messages = set()
+
     try:
         for item in response:
-            if item.get("text"):
-                result["messages"].append({"text": item["text"]})
+            text = item.get("text", "")
+            if text:
+                text_lower = text.lower()
+                text_normalized = text.strip().lower()
                 
+                # ALWAYS filter "placeholder" messages - these are internal Rasa messages
+                # Check both exact match and if it contains "placeholder"
+                if text_normalized == "placeholder" or "placeholder" in text_normalized:
+                    logger.info(f"🚫 FILTERING PLACEHOLDER: {text}")
+                    continue
+                
+                # ALWAYS filter fallback if user said "continue"
+                is_fallback = any(phrase in text_lower for phrase in fallback_phrases)
+                if is_fallback and is_continue:
+                    logger.info(f"🚫 ALWAYS FILTERING FALLBACK (user said continue): {text}")
+                    continue
+                
+                # Also filter fallback if information_sufficient == "asked"
+                if is_fallback and information_sufficient == "asked":
+                    logger.info(f"🚫 FILTERING FALLBACK (information_sufficient == asked): {text}")
+                    continue
+                
+                # Filter "What else can I help you with?" after booking summaries
+                if "what else can i help" in text_lower or "how can i assist" in text_lower:
+                    # Check if previous messages contain booking summary indicators
+                    previous_messages = ' '.join([msg.get("text", "") for msg in result["messages"]])
+                    if "booking reference" in previous_messages.lower() or "booking summary" in previous_messages.lower():
+                        logger.info(f"🚫 FILTERING 'What else can I help' after booking summary: {text}")
+                        continue
+                
+                # Filter duplicate messages (exact match)
+                if text_normalized in seen_messages:
+                    logger.info(f"🚫 FILTERING DUPLICATE: {text}")
+                    continue
+                
+                # Check for duplicate "For how many guests?" BEFORE adding to seen_messages
+                # This prevents the first one from being filtered
+                if "for how many guests" in text_lower:
+                    # Check if we already have this message in the result (not just seen_messages)
+                    if any("for how many guests" in msg.get("text", "").lower() for msg in result["messages"]):
+                        logger.info(f"🚫 FILTERING DUPLICATE 'For how many guests?': {text}")
+                        continue
+                
+                # Add to seen_messages AFTER all checks
+                seen_messages.add(text_normalized)
+            
+            if text:
+                result["messages"].append({"text": text})
+            
             # Check for json_message format which is used by newer Rasa SDK
             if item.get("json_message"):
                 json_data = item["json_message"]
@@ -138,13 +330,13 @@ def process_rasa_response(response, original_context):
                     action = json_data["action"]
                     result["actions"].append(action)
                 
-                # Handle calendar widget
-                if json_data.get("type") == "calendar":
-                    result["messages"].append({
-                        "text": json_data.get("message", "Please select your arrival date:"),
-                        "json_message": json_data
-                    })
-                
+                    # Handle calendar widget
+                    if json_data.get("type") == "calendar":
+                        result["messages"].append({
+                            "text": json_data.get("message", "Please select your arrival date:"),
+                            "json_message": json_data
+                        })
+                    
                 # Update context with any new information
                 if json_data.get("context"):
                     result["context"].update(json_data["context"])
@@ -163,22 +355,22 @@ def process_rasa_response(response, original_context):
                             f"Failed to decode custom JSON: {custom_data}")
                         continue
 
-                # Handle calendar widget
-                if custom_data.get("type") == "calendar":
-                    logger.info(f"Found calendar widget in custom data: {custom_data}")
-                    # Only add text message if it's not empty and not a duplicate
-                    text = item.get("text", "")
-                    if text and text.strip() and text.strip() != custom_data.get("message", ""):
-                        result["messages"].append({
-                            "text": text,
-                            "json_message": custom_data
-                        })
-                    else:
-                        # Just add the calendar widget without text (or with empty text)
-                        result["messages"].append({
-                            "text": "",
-                            "json_message": custom_data
-                        })
+                    # Handle calendar widget
+                    if custom_data.get("type") == "calendar":
+                        logger.info(f"Found calendar widget in custom data: {custom_data}")
+                        # Only add text message if it's not empty and not a duplicate
+                        text = item.get("text", "")
+                        if text and text.strip() and text.strip() != custom_data.get("message", ""):
+                            result["messages"].append({
+                                "text": text,
+                                "json_message": custom_data
+                            })
+                        else:
+                            # Just add the calendar widget without text (or with empty text)
+                            result["messages"].append({
+                                "text": "",
+                                "json_message": custom_data
+                            })
 
                 if custom_data.get("action"):
                     result["actions"].append(custom_data["action"])

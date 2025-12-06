@@ -90,6 +90,7 @@ slots:
           
           - If the message is a general booking request like "book a room", "i want to book", "reserve a room", "make a reservation", return null. These are NOT answers to "for how many guests".
           - If the message is asking ANY QUESTION (contains question words like "what", "which", "how", "when", "where", "why", "who", "tell me", "can you", "do you", "is there", "are there", "i don't know", etc.), return null. Questions are NOT answers to "for how many guests".
+          - CRITICAL FIRST CHECK: Before checking anything else, if the user says ONLY "continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", "sure", "yeah", "yep", or any similar continuation word/phrase (the message contains ONLY these words and nothing else, case-insensitive), and the previous bot message in the conversation was "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?", you MUST return "CONTINUE_REQUESTED" (the exact string "CONTINUE_REQUESTED", not null, not "continue", not "__continue__", not any other value). This special value will trigger the validate_guests action to handle the continuation properly. This is THE HIGHEST PRIORITY - check this FIRST before checking for numbers or anything else.
           - Extract numbers like "1", "2", "three", "two guests" → extract the number
           - If the message contains a date or month name, that is NOT an answer to "for how many guests" - return null.
           - If the message contains only letters without numbers (like "As", "no", "I don't know", "maybe"), that is NOT a number - return null.
@@ -192,6 +193,23 @@ slots:
     type: text
     mappings:
       - type: from_llm
+        prompt: |
+          Detect if the user is responding to the question "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?"
+          
+          CRITICAL: This slot mapping MUST ALWAYS execute when the previous bot message was "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?" - even if the user's message is just "continue", "yes", "ok", etc. This mapping has HIGHEST PRIORITY and MUST execute BEFORE fallback is triggered.
+          
+          CRITICAL FIRST CHECK - DO THIS BEFORE ANYTHING ELSE - THIS IS THE HIGHEST PRIORITY - EXECUTE IMMEDIATELY: 
+          Look at the conversation history. Find the MOST RECENT bot message. If that message contains "I hope I've provided you with sufficient information" OR "Is there anything else you'd like to know" OR "shall we continue with your booking", then:
+          
+          - If the user's message contains ONLY (or primarily) these words: "continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", "sure", "yeah", "yep", "ja", "jep", "oké", "doorgaan", "i dont need anymore", "i don't need anymore", "no more", "no more questions" (case-insensitive, the message contains these words), you MUST return "continue_detected" (the exact string "continue_detected", nothing else). This MUST happen IMMEDIATELY to prevent fallback. DO NOT WAIT. RETURN "continue_detected" IMMEDIATELY.
+          
+          - If the user's message contains "no", "nope", "nee", "more", "else", "other", "another" (but NOT "no more" or "don't need"), return "more_info_needed"
+          
+          - Otherwise, return null
+          
+          If the previous bot message was NOT the information sufficient question, return null.
+          
+          IMPORTANT: This mapping executes BEFORE intent classification and BEFORE fallback. If you detect "continue" after the information sufficient question, you MUST return "continue_detected" immediately. This is CRITICAL to prevent the fallback message "I'm sorry I am unable to understand you, could you please rephrase?" from appearing.
 
 responses:
   utter_greet_and_offer_help:
@@ -229,13 +247,13 @@ responses:
     - text: ""  # Empty - ValidatePaymentOption handles asking conditionally
 
   utter_ask_email:
-    - text: "Could you share the email address for the reservation confirmation?"
+    - text: "What is your email address?"
 
   utter_ask_first_name:
-    - text: "What's the first name to put on the reservation?"
+    - text: "What is your first name?"
 
   utter_ask_last_name:
-    - text: "And the last name?"
+    - text: "What is your last name?"
 
   utter_ask_payment_confirmation:
     - text: "Let me know once the payment is completed so I can finalize the booking."
@@ -262,9 +280,13 @@ responses:
           
           ⚠️⚠️⚠️ CRITICAL RULE - READ THIS FIRST ⚠️⚠️⚠️
           If the user is in a booking flow (the bot has asked for guests, room type, dates, or payment) and the user asks a question (like "is there a pool", "what about parking", "is there a parking spot"), you MUST ONLY provide the answer to the question. DO NOT add "Let's continue", "Let's continue with book room", "Shall we continue", or ANY continuation phrase. The booking flow will automatically handle continuation. ONLY provide the answer.
+          
+          CRITICAL: If the user says "continue", "yes", "ok", "okay", "proceed", "go ahead", "let's go", "lets go", or any similar continuation word/phrase, and the previous bot message was "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?", you MUST return ONLY "placeholder" (nothing else). DO NOT respond with "Let's continue", "Let's continue with book room", or ANY message. The booking flow will handle the continuation automatically. Return ONLY "placeholder". This is the HIGHEST PRIORITY - never respond with any message when user says "continue" after the information sufficient question.
+          
+          CRITICAL: If the previous bot message was "I hope I've provided you with sufficient information. Is there anything else you'd like to know, or shall we continue with your booking?", you MUST return ONLY "placeholder" (nothing else). DO NOT respond with "Let's continue", "Let's continue with book room", or ANY message. The booking flow will handle the continuation automatically. Return ONLY "placeholder". This applies to ANY user message after the information sufficient question, not just "continue".
           ⚠️⚠️⚠️ END CRITICAL RULE ⚠️⚠️⚠️
           
-          CRITICAL: When the user says "book a room", "i want to book", "reserve a room", "make a reservation", or any similar booking request, you MUST trigger the book_room flow. Do NOT respond with "placeholder" or "I'm processing your request". The book_room flow will automatically start asking for the required information.
+          CRITICAL: When the user says "book room", "book a room", "i want to book", "reserve room", "reserve a room", "make a reservation", "booking", or ANY similar booking request (even just "book" or "reserve"), you MUST trigger the book_room flow IMMEDIATELY. Do NOT respond with "placeholder", "I'm processing your request", "I can help, but I need more information", or ANY disambiguation question. The book_room flow will automatically start asking for the required information. NEVER ask the user to choose between options when they clearly want to book a room.
           
           CRITICAL: When greeting users for the FIRST time, say "Welcome to StayAssist. How can I assist you today?" - DO NOT add "Amsterdam" to the greeting message. Keep greetings simple and friendly.
           
@@ -344,6 +366,7 @@ actions:
   - action_generate_booking_number
   - action_send_payment_link
   - action_confirm_payment_received
+  - action_show_booking_summary
   - action_cancel_booking
   - action_answer_facility_question
   - action_validate_date
@@ -355,6 +378,9 @@ actions:
   - action_show_calendar
   - action_show_booking_calendar
   - action_ask_guests
+  - action_handle_continue
+  - action_handle_continue_interrupted
+  - action_default_fallback
   - validate_arrival_date
   - validate_departure_date
   - validate_nights
@@ -362,3 +388,7 @@ actions:
   - validate_guests
   - validate_room_type
   - validate_payment_option
+  - validate_first_name
+  - validate_last_name
+  - validate_email
+  - validate_information_sufficient
