@@ -17,6 +17,8 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
+export GOTO_NUM_THREADS=1
+export OPENBLAS_MAIN_FREE=1
 
 echo "Starting Rasa server..."
 rasa run --enable-api --cors "*" &
