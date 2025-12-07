@@ -46,85 +46,90 @@ function speakText(text) {
     // Create a new utterance
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
-    // Try to get the most natural, human-like voice
-    // Priority: Real human-sounding voices > Neural > Premium > Natural > Default
+    // Try to get the most natural FEMALE human-like voice
+    // Priority: Natural female voices > Neural female > Premium female > Default female
     let voices = synth.getVoices();
     let preferredVoice = null;
     
-    // Priority 1: Most natural human-sounding voices (best quality)
-    // These voices sound most like real humans
+    // Priority 1: Most natural FEMALE human-sounding voices (best quality)
+    // These female voices sound most like real humans
     preferredVoice = voices.find(voice => 
-        voice.name.includes('Samantha') ||  // macOS - very natural
-        voice.name.includes('Karen') ||     // macOS - natural female
-        voice.name.includes('Victoria') ||  // macOS - natural female
-        voice.name.includes('Alex') ||      // macOS - natural male
-        voice.name.includes('Daniel') ||    // macOS - natural male
-        voice.name.includes('Fiona') ||     // macOS - natural female
-        voice.name.includes('Tessa') ||     // macOS - natural female
-        (voice.name.includes('Google') && (voice.name.includes('Neural') || voice.name.includes('Wavenet'))) || // Google Neural/Wavenet - very natural
-        voice.name.includes('Amazon Polly') || // AWS Polly - very natural
-        voice.name.includes('ElevenLabs')   // ElevenLabs - extremely natural
+        (voice.name.includes('Samantha') && voice.lang.startsWith('en')) ||  // macOS - very natural female
+        (voice.name.includes('Karen') && voice.lang.startsWith('en')) ||     // macOS - natural female
+        (voice.name.includes('Victoria') && voice.lang.startsWith('en')) ||  // macOS - natural female
+        (voice.name.includes('Fiona') && voice.lang.startsWith('en')) ||     // macOS - natural female
+        (voice.name.includes('Tessa') && voice.lang.startsWith('en')) ||     // macOS - natural female
+        (voice.name.includes('Moira') && voice.lang.startsWith('en')) ||     // macOS - natural female
+        (voice.name.includes('Kate') && voice.lang.startsWith('en')) ||      // macOS - natural female
+        (voice.name.includes('Google') && voice.name.includes('US') && (voice.name.includes('Neural') || voice.name.includes('Wavenet')) && (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))) || // Google Neural/Wavenet female
+        (voice.name.includes('Microsoft') && (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny'))) || // Microsoft natural female voices
+        (voice.name.includes('Amazon Polly') && (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))) || // AWS Polly female
+        (voice.name.includes('ElevenLabs') && (voice.gender === 'female' || voice.name.toLowerCase().includes('female')))   // ElevenLabs female
     );
     
-    // Priority 2: Neural/Premium voices (very natural)
+    // Priority 2: Any Neural/Premium FEMALE voices (very natural)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-            voice.name.includes('Neural') ||
-            voice.name.includes('Premium') ||
-            voice.name.includes('Enhanced') ||
-            voice.name.includes('Wavenet')
+            (voice.name.includes('Neural') || voice.name.includes('Premium') || voice.name.includes('Enhanced') || voice.name.includes('Wavenet')) &&
+            (voice.gender === 'female' || voice.name.toLowerCase().includes('female') || voice.lang.startsWith('en'))
         );
     }
     
-    // Priority 3: Google voices (usually better quality than default)
+    // Priority 3: Google US FEMALE voices (usually better quality)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-            voice.name.includes('Google') && voice.name.includes('US')
+            voice.name.includes('Google') && 
+            voice.name.includes('US') &&
+            (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))
         );
     }
     
-    // Priority 4: Microsoft natural voices
+    // Priority 4: Microsoft natural FEMALE voices
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.name.includes('Microsoft') && 
-            (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny'))
+            (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny') || voice.name.includes('Catherine'))
         );
     }
     
-    // Priority 5: Any Google voice (fallback)
+    // Priority 5: Any Google FEMALE voice (fallback)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-            voice.name.includes('Google')
+            voice.name.includes('Google') &&
+            (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))
         );
     }
     
-    // Priority 6: Any US English female voice (more natural than male for customer service)
+    // Priority 6: Any US English FEMALE voice (explicitly female)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.lang.startsWith('en-US') && 
-            (voice.name.includes('Female') || voice.gender === 'female')
+            (voice.name.includes('Female') || voice.gender === 'female' || 
+             voice.name.toLowerCase().includes('woman') || voice.name.toLowerCase().includes('girl'))
         );
     }
     
-    // Priority 7: Any US English voice (last resort)
+    // Priority 7: macOS default female voices (last resort for female)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-            voice.lang.startsWith('en-US')
+            voice.lang.startsWith('en') && 
+            (voice.name.includes('Samantha') || voice.name.includes('Karen') || voice.name.includes('Victoria') || 
+             voice.name.includes('Fiona') || voice.name.includes('Tessa') || voice.name.includes('Moira'))
         );
     }
     
     if (preferredVoice) {
         utterance.voice = preferredVoice;
-        console.log('Using voice:', preferredVoice.name, preferredVoice.lang);
+        console.log('Using FEMALE voice:', preferredVoice.name, preferredVoice.lang, 'Gender:', preferredVoice.gender);
     } else {
-        console.warn('No preferred voice found, using default');
+        console.warn('No preferred FEMALE voice found, using default');
     }
     
     utterance.lang = 'en-US';
-    // Optimized for natural, human-like speech (less robotic, more conversational)
-    utterance.rate = 0.8;   // Slower pace (0.8 = 80% speed) - more natural, less rushed
-    utterance.pitch = 0.9;  // Lower pitch (0.9 = 90% pitch) - deeper, more natural sound
-    utterance.volume = 0.95; // Slightly lower volume (0.95) - softer, more natural
+    // Optimized for VERY natural, human-like FEMALE speech (minimal AI/robotic sound)
+    utterance.rate = 0.75;   // Even slower pace (0.75 = 75% speed) - very natural, relaxed conversation
+    utterance.pitch = 0.88;  // Lower pitch (0.88 = 88% pitch) - deeper, warmer, more human-like
+    utterance.volume = 0.92; // Softer volume (0.92) - gentle, less robotic, more intimate
     
     utterance.onstart = () => {
         console.log('Speaking with voice:', utterance.voice ? utterance.voice.name : 'Default voice');
