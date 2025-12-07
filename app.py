@@ -524,7 +524,7 @@ def text_to_speech():
         
         # Get ElevenLabs API key from environment variable
         elevenlabs_api_key = os.environ.get('ELEVENLABS_API_KEY')
-        elevenlabs_voice_id = os.environ.get('ELEVENLABS_VOICE_ID', 'EXAVITQu4vr4xnSDxMaL')  # Default: natural female voice "Bella"
+        elevenlabs_voice_id = os.environ.get('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM')  # Default: natural female voice "Rachel"
         
         if elevenlabs_api_key:
             # Use ElevenLabs API for natural voice
@@ -539,10 +539,10 @@ def text_to_speech():
                     "text": clean_text,
                     "model_id": "eleven_multilingual_v2",  # Natural, multilingual model
                     "voice_settings": {
-                        "stability": 0.5,      # Natural variation
-                        "similarity_boost": 0.75,  # Voice similarity
-                        "style": 0.0,          # Neutral style
-                        "use_speaker_boost": True  # Enhanced clarity
+                        "stability": 0.4,      # Lower for more natural variation (0.0-1.0)
+                        "similarity_boost": 0.8,  # Higher for more voice similarity (0.0-1.0)
+                        "style": 0.2,          # Slight style for more natural expression (0.0-1.0)
+                        "use_speaker_boost": True  # Enhanced clarity and naturalness
                     }
                 }
                 
