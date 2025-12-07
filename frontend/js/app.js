@@ -46,22 +46,70 @@ function speakText(text) {
     // Create a new utterance
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
-    // Try to get a more natural voice
+    // Try to get a more natural, human-like voice
+    // Priority: Premium voices > Neural voices > Natural voices > Default voices
     let voices = synth.getVoices();
-    let preferredVoice = voices.find(voice => 
-        voice.name.includes('Samantha') || 
-        voice.name.includes('Google') || 
-        voice.name.includes('Natural') ||
-        (voice.name.includes('US') && voice.name.includes('Female'))
+    let preferredVoice = null;
+    
+    // Priority 1: Premium/Neural voices (most natural)
+    preferredVoice = voices.find(voice => 
+        voice.name.includes('Neural') ||
+        voice.name.includes('Premium') ||
+        voice.name.includes('Enhanced')
     );
+    
+    // Priority 2: High-quality natural voices
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.name.includes('Samantha') || 
+            voice.name.includes('Karen') ||
+            voice.name.includes('Victoria') ||
+            voice.name.includes('Alex') ||
+            (voice.name.includes('Google') && voice.name.includes('US'))
+        );
+    }
+    
+    // Priority 3: Any Google voice (usually better quality)
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.name.includes('Google')
+        );
+    }
+    
+    // Priority 4: Microsoft voices (often more natural)
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.name.includes('Microsoft') && 
+            (voice.name.includes('Zira') || voice.name.includes('Aria'))
+        );
+    }
+    
+    // Priority 5: Any US English female voice
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.lang.startsWith('en-US') && 
+            (voice.name.includes('Female') || voice.gender === 'female')
+        );
+    }
+    
+    // Priority 6: Any US English voice
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.lang.startsWith('en-US')
+        );
+    }
     
     if (preferredVoice) {
         utterance.voice = preferredVoice;
+        console.log('Using voice:', preferredVoice.name, preferredVoice.lang);
+    } else {
+        console.warn('No preferred voice found, using default');
     }
     
     utterance.lang = 'en-US';
-    utterance.rate = 0.9; // Slightly slower rate for more natural sound
-    utterance.pitch = 1.0;
+    // More natural settings: slightly slower, slightly lower pitch
+    utterance.rate = 0.85; // Slower for more natural, conversational pace
+    utterance.pitch = 0.95; // Slightly lower pitch for more natural sound
     utterance.volume = 1.0;
     
     utterance.onstart = () => {
