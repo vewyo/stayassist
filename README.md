@@ -90,10 +90,7 @@ The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. I
    
    **Easiest method - Use .env file (recommended):**
    ```bash
-   # Copy the example file
-   cp .env.example .env
-   
-   # Edit .env and add your API key
+   # Create .env file and add your API key
    # Mac/Linux/Windows (Git Bash):
    nano .env
    # or
@@ -106,10 +103,13 @@ The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. I
    notepad .env
    ```
    
-   Then edit `.env` and replace `your-api-key-here` with your actual API key:
+   Add this to your `.env` file (create it if it doesn't exist):
    ```
    ELEVENLABS_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
+   ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
    ```
+   
+   Replace `sk-xxxxxxxxxxxxxxxxxxxxx` with your actual API key from ElevenLabs.
    
    **Alternative - Set environment variable manually:**
    
