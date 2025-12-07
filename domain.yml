@@ -416,7 +416,9 @@ responses:
           - Lunch: "Lunch is available from 13:00 to 15:00."
           - Dinner: "Dinner service runs from 18:00 to 20:00."
           - Gym: "The gym is open 24 hours a day."
-          - Accessibility: "Our hotel is fully accessible. We have an elevator/lift available, and all areas including rooms, restaurant, pool, and common areas are wheelchair accessible. Our staff is available 24/7 to assist with mobility needs. If you need assistance during your stay, please let us know and we'll be happy to help."
+          - Accessibility (general): "Our hotel is fully accessible. We have an elevator/lift available, and all areas including rooms, restaurant, pool, and common areas are wheelchair accessible. Our staff is available 24/7 to assist with mobility needs. We also have accessible parking spaces, visual and hearing assistance available upon request. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
+          - Accessibility + Pool: "Yes, absolutely! The pool is fully accessible for guests with disabilities. We have wheelchair access, pool lifts available, and our staff is trained to assist. The pool is open daily from 07:30 to 18:00. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
+          - Accessibility + Facilities: "Our hotel is fully accessible. All areas including rooms, restaurant, pool, gym, and common areas are wheelchair accessible. We have an elevator/lift available, accessible parking spaces, and our staff is available 24/7 to assist with mobility needs. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
           
           The user is making small talk, and the assistant should respond, keeping things light.
           

@@ -296,6 +296,19 @@ def _is_facility_question(message: str) -> Tuple[bool, Optional[str]]:
     
     message_lower = message.lower().strip()
     
+    # FIRST: Check for accessibility/disability questions combined with facilities
+    # These need specific, helpful responses
+    accessibility_keywords = ["disabled", "disability", "wheelchair", "mobility", "handicap", "accessible", "accessibility", "blind", "deaf", "hearing", "vision", "visual", "impairment"]
+    facility_in_message = any(word in message_lower for word in ["pool", "swimming", "gym", "restaurant", "breakfast", "lunch", "dinner", "parking", "room", "rooms"])
+    
+    if any(acc_word in message_lower for acc_word in accessibility_keywords):
+        if "pool" in message_lower or "swimming" in message_lower:
+            return True, "Yes, absolutely! The pool is fully accessible for guests with disabilities. We have wheelchair access, pool lifts available, and our staff is trained to assist. The pool is open daily from 07:30 to 18:00. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
+        elif facility_in_message:
+            return True, "Our hotel is fully accessible. All areas including rooms, restaurant, pool, gym, and common areas are wheelchair accessible. We have an elevator/lift available, accessible parking spaces, and our staff is available 24/7 to assist with mobility needs. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
+        else:
+            return True, "Our hotel is fully accessible. We have an elevator/lift available, and all areas including rooms, restaurant, pool, and common areas are wheelchair accessible. Our staff is available 24/7 to assist with mobility needs. We also have accessible parking spaces, visual and hearing assistance available upon request. If you need any specific assistance or have questions about accessibility features, please let us know and we'll be happy to help."
+    
     # Facility keywords
     facility_keywords = {
         "pool": "The pool is open daily from 07:30 to 18:00.",
