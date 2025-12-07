@@ -46,45 +46,59 @@ function speakText(text) {
     // Create a new utterance
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
-    // Try to get a more natural, human-like voice
-    // Priority: Premium voices > Neural voices > Natural voices > Default voices
+    // Try to get the most natural, human-like voice
+    // Priority: Real human-sounding voices > Neural > Premium > Natural > Default
     let voices = synth.getVoices();
     let preferredVoice = null;
     
-    // Priority 1: Premium/Neural voices (most natural)
+    // Priority 1: Most natural human-sounding voices (best quality)
+    // These voices sound most like real humans
     preferredVoice = voices.find(voice => 
-        voice.name.includes('Neural') ||
-        voice.name.includes('Premium') ||
-        voice.name.includes('Enhanced')
+        voice.name.includes('Samantha') ||  // macOS - very natural
+        voice.name.includes('Karen') ||     // macOS - natural female
+        voice.name.includes('Victoria') ||  // macOS - natural female
+        voice.name.includes('Alex') ||      // macOS - natural male
+        voice.name.includes('Daniel') ||    // macOS - natural male
+        voice.name.includes('Fiona') ||     // macOS - natural female
+        voice.name.includes('Tessa') ||     // macOS - natural female
+        (voice.name.includes('Google') && (voice.name.includes('Neural') || voice.name.includes('Wavenet'))) || // Google Neural/Wavenet - very natural
+        voice.name.includes('Amazon Polly') || // AWS Polly - very natural
+        voice.name.includes('ElevenLabs')   // ElevenLabs - extremely natural
     );
     
-    // Priority 2: High-quality natural voices
+    // Priority 2: Neural/Premium voices (very natural)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
-            voice.name.includes('Samantha') || 
-            voice.name.includes('Karen') ||
-            voice.name.includes('Victoria') ||
-            voice.name.includes('Alex') ||
-            (voice.name.includes('Google') && voice.name.includes('US'))
+            voice.name.includes('Neural') ||
+            voice.name.includes('Premium') ||
+            voice.name.includes('Enhanced') ||
+            voice.name.includes('Wavenet')
         );
     }
     
-    // Priority 3: Any Google voice (usually better quality)
+    // Priority 3: Google voices (usually better quality than default)
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.name.includes('Google') && voice.name.includes('US')
+        );
+    }
+    
+    // Priority 4: Microsoft natural voices
+    if (!preferredVoice) {
+        preferredVoice = voices.find(voice => 
+            voice.name.includes('Microsoft') && 
+            (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny'))
+        );
+    }
+    
+    // Priority 5: Any Google voice (fallback)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.name.includes('Google')
         );
     }
     
-    // Priority 4: Microsoft voices (often more natural)
-    if (!preferredVoice) {
-        preferredVoice = voices.find(voice => 
-            voice.name.includes('Microsoft') && 
-            (voice.name.includes('Zira') || voice.name.includes('Aria'))
-        );
-    }
-    
-    // Priority 5: Any US English female voice
+    // Priority 6: Any US English female voice (more natural than male for customer service)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.lang.startsWith('en-US') && 
@@ -92,7 +106,7 @@ function speakText(text) {
         );
     }
     
-    // Priority 6: Any US English voice
+    // Priority 7: Any US English voice (last resort)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.lang.startsWith('en-US')
@@ -107,10 +121,10 @@ function speakText(text) {
     }
     
     utterance.lang = 'en-US';
-    // More natural settings: slightly slower, slightly lower pitch
-    utterance.rate = 0.85; // Slower for more natural, conversational pace
-    utterance.pitch = 0.95; // Slightly lower pitch for more natural sound
-    utterance.volume = 1.0;
+    // Optimized for natural, human-like speech (less robotic, more conversational)
+    utterance.rate = 0.8;   // Slower pace (0.8 = 80% speed) - more natural, less rushed
+    utterance.pitch = 0.9;  // Lower pitch (0.9 = 90% pitch) - deeper, more natural sound
+    utterance.volume = 0.95; // Slightly lower volume (0.95) - softer, more natural
     
     utterance.onstart = () => {
         console.log('Speaking with voice:', utterance.voice ? utterance.voice.name : 'Default voice');
