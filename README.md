@@ -82,7 +82,32 @@ The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. I
    - Get your API key from the dashboard
    - Free tier includes 10,000 characters/month
 
-2. **Set Environment Variable:**
+2. **Set up your API key:**
+   
+   **Easiest method - Use .env file (recommended):**
+   ```bash
+   # Copy the example file
+   cp .env.example .env
+   
+   # Edit .env and add your API key
+   # Mac/Linux/Windows (Git Bash):
+   nano .env
+   # or
+   code .env
+   
+   # Windows (Command Prompt):
+   notepad .env
+   
+   # Windows (PowerShell):
+   notepad .env
+   ```
+   
+   Then edit `.env` and replace `your-api-key-here` with your actual API key:
+   ```
+   ELEVENLABS_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxx
+   ```
+   
+   **Alternative - Set environment variable manually:**
    
    **Mac/Linux:**
    ```bash
@@ -104,7 +129,10 @@ The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. I
 
 3. **Start the servers** (the voice service will automatically be used if the API key is set)
 
-**Note:** If no API key is set, the chatbot will automatically fall back to browser-based text-to-speech (still optimized for natural female voices).
+**Note:** 
+- The `.env` file is automatically loaded when you start the Flask server
+- If no API key is set, the chatbot will automatically fall back to browser-based text-to-speech (still optimized for natural female voices)
+- The `.env` file is already in `.gitignore`, so your API key won't be committed to git
 
 ## 📋 Detailed Instructions
 

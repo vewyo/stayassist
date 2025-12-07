@@ -6,6 +6,10 @@ import logging
 from flask import Flask, send_from_directory, request, jsonify
 from flask_cors import CORS
 from requests.exceptions import RequestException, Timeout, ConnectionError
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO,
