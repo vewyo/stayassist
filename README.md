@@ -7,9 +7,11 @@ An intelligent chatbot for hotel bookings built with Rasa Pro and Flask.
 ### Prerequisites
 - Python 3.8+
 - Virtual environment (`.venv`)
+- Git Bash (Windows) or Terminal (Mac/Linux)
 
 ### Simple Commands
 
+**Mac/Linux:**
 ```bash
 # Stop everything (if servers are running)
 ./stop.sh
@@ -21,24 +23,106 @@ An intelligent chatbot for hotel bookings built with Rasa Pro and Flask.
 ./train_and_run.sh
 ```
 
+**Windows (using Git Bash):**
+```bash
+# Stop everything (if servers are running)
+./stop.sh
+
+# Start everything
+./start.sh
+
+# Train and then start
+./train_and_run.sh
+```
+
+**Windows (using Command Prompt/PowerShell):**
+```cmd
+REM Stop everything
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq rasa*" 2>nul
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq app.py*" 2>nul
+
+REM Activate virtual environment
+.venv\Scripts\activate
+
+REM Set environment variables (for OpenBLAS crash fix)
+set OPENBLAS_NUM_THREADS=1
+set OMP_NUM_THREADS=1
+set MKL_NUM_THREADS=1
+set VECLIB_MAXIMUM_THREADS=1
+set NUMEXPR_NUM_THREADS=1
+
+REM Start Rasa (in one terminal)
+start "Rasa Server" cmd /k "rasa run --enable-api --cors *"
+
+REM Wait a few seconds
+timeout /t 8 /nobreak
+
+REM Start Flask (in another terminal)
+start "Flask Server" cmd /k "python app.py"
+```
+
 ## 📋 Detailed Instructions
 
 ### 1. Activate Virtual Environment
 
+**Mac/Linux:**
 ```bash
 source .venv/bin/activate
 ```
 
+**Windows (Command Prompt):**
+```cmd
+.venv\Scripts\activate
+```
+
+**Windows (PowerShell):**
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
 ### 2. Start Servers
 
-**Option A: Simple (recommended)**
+**Option A: Simple (recommended) - Mac/Linux/Windows (Git Bash)**
 ```bash
 ./start.sh
 ```
 
-**Option B: Manual**
+**Option B: Manual - Mac/Linux**
 ```bash
 # Terminal 1: Start Rasa
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+rasa run --enable-api --cors "*"
+
+# Terminal 2: Start Flask
+python app.py
+```
+
+**Option B: Manual - Windows (Command Prompt)**
+```cmd
+REM Terminal 1: Start Rasa
+set OPENBLAS_NUM_THREADS=1
+set OMP_NUM_THREADS=1
+set MKL_NUM_THREADS=1
+set VECLIB_MAXIMUM_THREADS=1
+set NUMEXPR_NUM_THREADS=1
+rasa run --enable-api --cors "*"
+
+REM Terminal 2: Start Flask
+python app.py
+```
+
+**Option B: Manual - Windows (PowerShell)**
+```powershell
+# Terminal 1: Start Rasa
+$env:OPENBLAS_NUM_THREADS=1
+$env:OMP_NUM_THREADS=1
+$env:MKL_NUM_THREADS=1
+$env:VECLIB_MAXIMUM_THREADS=1
+$env:NUMEXPR_NUM_THREADS=1
 rasa run --enable-api --cors "*"
 
 # Terminal 2: Start Flask
@@ -47,22 +131,43 @@ python app.py
 
 ### 3. Training
 
-   ```bash
+**Mac/Linux/Windows (Git Bash):**
+```bash
 # Train only
-   rasa train
+rasa train
 
 # Train and start
 ./train_and_run.sh
 ```
 
+**Windows (Command Prompt/PowerShell):**
+```cmd
+REM Train only
+rasa train
+
+REM Then start manually (see Option B above)
+```
+
 ### 4. Stop Servers
 
-**Simple:**
+**Mac/Linux/Windows (Git Bash):**
 ```bash
 ./stop.sh
 ```
 
-**Manual:**
+**Windows (Command Prompt):**
+```cmd
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq rasa*" 2>nul
+taskkill /F /IM python.exe /FI "WINDOWTITLE eq app.py*" 2>nul
+```
+
+**Windows (PowerShell):**
+```powershell
+Get-Process python | Where-Object {$_.CommandLine -like "*rasa*"} | Stop-Process -Force
+Get-Process python | Where-Object {$_.CommandLine -like "*app.py*"} | Stop-Process -Force
+```
+
+**Manual (all platforms):**
 - Press `Ctrl+C` in both terminals
 
 ## 🌐 Access
@@ -108,6 +213,7 @@ stayassist/
 
 ### Port already in use?
 
+**Mac/Linux/Windows (Git Bash):**
 ```bash
 # Stop all servers
 ./stop.sh
@@ -116,8 +222,24 @@ stayassist/
 ./start.sh
 ```
 
+**Windows (Command Prompt):**
+```cmd
+REM Find and kill processes using ports 5001 and 5005
+netstat -ano | findstr :5001
+netstat -ano | findstr :5005
+REM Use the PID from above and kill it:
+taskkill /PID <PID> /F
+```
+
+**Windows (PowerShell):**
+```powershell
+# Find and kill processes using ports 5001 and 5005
+Get-NetTCPConnection -LocalPort 5001,5005 | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }
+```
+
 ### Rasa training errors?
 
+**All platforms:**
 ```bash
 # Check for syntax errors
 rasa data validate
@@ -125,18 +247,73 @@ rasa data validate
 
 ### Flask errors?
 
-   ```bash
+**Mac/Linux/Windows (Git Bash):**
+```bash
 # Check if Rasa is running
 curl http://localhost:5005/status
-   ```
+```
+
+**Windows (Command Prompt):**
+```cmd
+REM Check if Rasa is running
+curl http://localhost:5005/status
+```
+
+**Windows (PowerShell):**
+```powershell
+# Check if Rasa is running
+Invoke-WebRequest -Uri http://localhost:5005/status
+```
+
+### OpenBLAS crashes (macOS ARM64)?
+
+**Mac:**
+```bash
+# These environment variables are already set in start.sh
+export OPENBLAS_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+```
+
+**Windows:**
+```cmd
+REM Set environment variables (usually not needed on Windows)
+set OPENBLAS_NUM_THREADS=1
+set OMP_NUM_THREADS=1
+set MKL_NUM_THREADS=1
+set VECLIB_MAXIMUM_THREADS=1
+set NUMEXPR_NUM_THREADS=1
+```
 
 ## 📝 Git Workflow
 
-   ```bash
+**All platforms:**
+```bash
 # Commit and push changes
 git add -A
 git commit -m "Description of changes"
 git push origin main
+```
+
+## 💾 Bookings Storage
+
+Bookings are stored persistently in `data/bookings.json`. This file is automatically created when the first booking is made and is excluded from git (see `.gitignore`).
+
+**Location:**
+- Mac/Linux/Windows: `data/bookings.json` (relative to project root)
+
+**View bookings:**
+```bash
+# Mac/Linux/Windows (Git Bash)
+cat data/bookings.json
+
+# Windows (Command Prompt)
+type data\bookings.json
+
+# Windows (PowerShell)
+Get-Content data\bookings.json
 ```
 
 ## 📚 More Info
