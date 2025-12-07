@@ -79,7 +79,11 @@ The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. I
 
 1. **Get an ElevenLabs API Key:**
    - Sign up at [elevenlabs.io](https://elevenlabs.io)
-   - Get your API key from the dashboard
+   - Go to your dashboard → **Profile** → **API Keys**
+   - Click **"Add API Key"** or **"Create New Key"**
+   - **Required Permission:** ✅ **"Text to Speech"** (must be enabled)
+   - **Optional Permission:** ✅ **"Voices (Read only)"** (recommended, to see available voices)
+   - Copy your API key (starts with `sk-...`)
    - Free tier includes 10,000 characters/month
 
 2. **Set up your API key:**
