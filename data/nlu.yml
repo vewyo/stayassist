@@ -39,6 +39,47 @@ nlu:
       - can you cancel the reservation I made?
       - cancel booking number SA-000111
       - I'd like to cancel my stay
+  - intent: user_intent_change_date
+    examples: |
+      - can i change the date
+      - change the date
+      - modify my booking dates
+      - update my reservation dates
+      - change my arrival date
+      - change my departure date
+      - I want to change the dates
+      - can I change my booking dates
+      - modify dates
+      - update dates
+  - intent: user_intent_change_room
+    examples: |
+      - can i change room
+      - change room
+      - change room type
+      - modify my room
+      - update my room type
+      - change my booking room
+      - I want to change the room
+      - can I change my room type
+      - modify room
+      - update room
+      - change to suite
+      - change to standard
+      - switch room
+  - intent: user_intent_change_guests
+    examples: |
+      - can i change guests
+      - change guests
+      - change number of guests
+      - modify my guests
+      - update my guests
+      - change my booking guests
+      - I want to change the guests
+      - can I change my number of guests
+      - modify guests
+      - update guests
+      - change to 3 guests
+      - change to 4 people
 
   - intent: user_intent_facility_information
     examples: |

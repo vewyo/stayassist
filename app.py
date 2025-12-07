@@ -20,6 +20,102 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 # Default Rasa server URL
 DEFAULT_RASA_URL = 'http://localhost:5005/webhooks/rest/webhook'
 
+# Security: Check if message is hotel-related
+def is_hotel_related(message):
+    """
+    Check if a message is hotel-related. Returns True if hotel-related, False otherwise.
+    """
+    if not message:
+        return False
+    
+    message_lower = message.lower().strip()
+    
+    # Hotel-related keywords
+    hotel_keywords = [
+        # Booking related
+        'book', 'booking', 'reserve', 'reservation', 'room', 'rooms', 'suite', 'standard',
+        'guest', 'guests', 'stay', 'staying', 'check-in', 'check-in', 'checkout', 'check-out',
+        # Payment related
+        'pay', 'payment', 'online', 'desk', 'front desk', 'card', 'credit', 'debit',
+        # Dates
+        'arrival', 'departure', 'date', 'dates', 'night', 'nights', 'day', 'days',
+        # Facilities
+        'pool', 'parking', 'breakfast', 'lunch', 'dinner', 'gym', 'facility', 'facilities',
+        'amenity', 'amenities', 'wifi', 'internet', 'elevator', 'lift', 'wheelchair',
+        # Hotel services
+        'cancel', 'cancellation', 'booking number', 'reference', 'hotel', 'stayassist',
+        # Questions about hotel
+        'price', 'cost', 'fee', 'fees', 'available', 'availability', 'open', 'hours',
+        'time', 'times', 'when', 'what', 'which', 'how much', 'how many',
+        # Greetings (allowed)
+        'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings',
+        # Continuation (allowed during booking)
+        'continue', 'yes', 'ok', 'okay', 'proceed', 'go ahead', 'sure', 'yeah', 'yep',
+        # Personal details (during booking)
+        'name', 'first name', 'last name', 'email', 'address',
+        # Numbers (likely booking related)
+        'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
+    ]
+    
+    # Check if message contains hotel-related keywords
+    if any(keyword in message_lower for keyword in hotel_keywords):
+        return True
+    
+    # Blocked content patterns
+    blocked_patterns = [
+        # Programming
+        'code', 'programming', 'python', 'javascript', 'function', 'variable', 'debug', 'error',
+        'script', 'algorithm', 'api', 'json', 'html', 'css', 'sql', 'database',
+        # Personal questions about bot
+        'what are you', 'who are you', 'what is your', 'tell me about yourself',
+        'what model', 'which model', 'what ai', 'what llm', 'what system',
+        'how are you built', 'how do you work', 'what are your rules',
+        # Discussions
+        'discuss', 'debate', 'opinion', 'think about', 'what do you think',
+        # Jokes
+        'joke', 'funny', 'humor', 'laugh',
+        # Insults
+        'stupid', 'idiot', 'dumb', 'useless', 'bad', 'terrible', 'hate',
+        # Threats
+        'threat', 'harm', 'hurt', 'kill', 'destroy',
+        # Test questions
+        'test', 'testing', 'debug', 'trial',
+        # Prompt injection
+        'ignore', 'forget', 'disregard', 'override', 'change your', 'pretend you are',
+        'act as', 'roleplay', 'role play', 'imagine', 'suppose', 'assume',
+        'reveal', 'show me your', 'what are your instructions', 'what are your rules',
+        'system prompt', 'initial prompt',
+    ]
+    
+    # Check if message contains blocked patterns
+    if any(pattern in message_lower for pattern in blocked_patterns):
+        return False
+    
+    # Allow greetings (always allowed)
+    greeting_words = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings', 'greet']
+    if any(greeting in message_lower for greeting in greeting_words):
+        return True
+    
+    # Allow short responses that are likely booking-related
+    if len(message_lower.split()) <= 2:
+        # Allow if it's a number, common booking response, or continuation word
+        allowed_short = ['yes', 'ok', 'okay', 'no', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
+                        'standard', 'suite', 'online', 'desk', 'continue', 'proceed', 'go ahead', 'sure']
+        if message_lower in allowed_short:
+            return True
+    
+    # If message contains blocked patterns, definitely block
+    # This check happens after allowing greetings and short responses
+    if any(pattern in message_lower for pattern in blocked_patterns):
+        return False
+    
+    # If no hotel keywords found and not clearly blocked, check if it's a simple question/statement
+    # Allow if it's a very short message that might be a booking response
+    # Otherwise, default to allowing (let Rasa/LLM handle it with the security prompt)
+    # The LLM prompt will catch anything that slips through
+    return True
+
 # Serve frontend files
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -51,6 +147,15 @@ def send_message():
     context = data.get('context', {})
     
     logger.info(f"🔵 Received message: '{message}', context sender_id: {context.get('sender_id', 'user')}")
+    
+    # SECURITY: Check if message is hotel-related
+    if message and not is_hotel_related(message):
+        logger.warning(f"🚫 SECURITY BLOCK: Non-hotel related message blocked: '{message}'")
+        return jsonify({
+            "messages": [{"text": "I can only help with hotel related matters."}],
+            "context": context,
+            "actions": []
+        })
     
     # CRITICAL: Handle "continue" response when information_sufficient == "asked"
     # This MUST happen BEFORE calling Rasa to prevent fallback from being triggered

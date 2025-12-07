@@ -1,13 +1,21 @@
 import json
+import logging
+import os
 import random
 import re
 import string
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Text, Tuple
 
 from rasa_sdk import Action, Tracker
 from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
+
+logger = logging.getLogger(__name__)
+
+# Path to bookings storage file
+BOOKINGS_FILE = Path(__file__).parent.parent / "data" / "bookings.json"
 
 
 NUM_WORDS = {
@@ -66,6 +74,85 @@ IGNORED_TOKENS = {
 def _generate_booking_reference(prefix: str = "SA-") -> str:
     random_digits = "".join(random.choices(string.digits, k=6))
     return f"{prefix}{random_digits}"
+
+
+def _load_bookings() -> Dict[str, Dict[str, Any]]:
+    """Load bookings from JSON file."""
+    try:
+        if BOOKINGS_FILE.exists():
+            with open(BOOKINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        logger.error(f"Error loading bookings: {e}")
+        return {}
+
+
+def _save_bookings(bookings: Dict[str, Dict[str, Any]]) -> None:
+    """Save bookings to JSON file."""
+    try:
+        # Ensure directory exists
+        BOOKINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(BOOKINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(bookings, f, indent=2, ensure_ascii=False)
+        logger.info(f"Bookings saved to {BOOKINGS_FILE}")
+    except Exception as e:
+        logger.error(f"Error saving bookings: {e}")
+
+
+def _save_booking(booking_reference: str, booking_data: Dict[str, Any]) -> None:
+    """Save a single booking to the storage file."""
+    bookings = _load_bookings()
+    bookings[booking_reference] = booking_data
+    _save_bookings(bookings)
+    logger.info(f"Booking {booking_reference} saved")
+
+
+def _get_booking(booking_reference: str) -> Optional[Dict[str, Any]]:
+    """Get a booking by reference number (with or without SA- prefix)."""
+    bookings = _load_bookings()
+    # Extract numbers from reference
+    numbers_only = re.sub(r'[^0-9]', '', str(booking_reference))
+    # Try exact match first
+    if booking_reference in bookings:
+        return bookings[booking_reference]
+    # Try with SA- prefix
+    if f"SA-{numbers_only}" in bookings:
+        return bookings[f"SA-{numbers_only}"]
+    # Try matching by numbers only
+    for ref, booking in bookings.items():
+        ref_numbers = re.sub(r'[^0-9]', '', ref)
+        if ref_numbers == numbers_only:
+            return booking
+    return None
+
+
+def _delete_booking(booking_reference: str) -> bool:
+    """Delete a booking by reference number."""
+    bookings = _load_bookings()
+    # Extract numbers from reference
+    numbers_only = re.sub(r'[^0-9]', '', str(booking_reference))
+    deleted = False
+    # Try exact match first
+    if booking_reference in bookings:
+        del bookings[booking_reference]
+        deleted = True
+    # Try with SA- prefix
+    elif f"SA-{numbers_only}" in bookings:
+        del bookings[f"SA-{numbers_only}"]
+        deleted = True
+    # Try matching by numbers only
+    else:
+        for ref in list(bookings.keys()):
+            ref_numbers = re.sub(r'[^0-9]', '', ref)
+            if ref_numbers == numbers_only:
+                del bookings[ref]
+                deleted = True
+                break
+    if deleted:
+        _save_bookings(bookings)
+        logger.info(f"Booking {booking_reference} deleted")
+    return deleted
 
 
 def _parse_numeric_value(value: Any) -> Optional[float]:
@@ -611,7 +698,22 @@ Your booking reference is {booking_reference}. Please keep it handy for payments
         
         dispatcher.utter_message(text=summary)
         
-        # Store booking reference for later cancellation
+        # Save booking to persistent storage
+        booking_data = {
+            "booking_reference": booking_reference,
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email.lower().strip() if email else None,
+            "guests": guests,
+            "room_type": room_type,
+            "arrival_date": arrival_date,
+            "departure_date": departure_date,
+            "payment_option": payment_option,
+            "created_at": datetime.now().isoformat()
+        }
+        _save_booking(booking_reference, booking_data)
+        logger.info(f"Booking {booking_reference} saved to persistent storage")
+        
         return [SlotSet("booking_reference", booking_reference)]
 
 
@@ -626,22 +728,26 @@ class ActionCancelBooking(Action):
         domain: Dict[Text, Any],
     ) -> List[Dict[Text, Any]]:
         provided = (tracker.get_slot("booking_number") or "").strip().upper()
-        stored = (tracker.get_slot("booking_reference") or "").strip().upper()
-
+        
         if not provided:
             dispatcher.utter_message(text="I didn't catch a booking number to cancel.")
             return []
 
-        if not stored:
+        # Try to get booking from persistent storage
+        booking = _get_booking(provided)
+        
+        if booking:
+            # Delete booking from storage
+            _delete_booking(provided)
             dispatcher.utter_message(
-                text=(
-                    "I don't have an active booking reference on file. "
-                    "Please double-check the number or create a new reservation."
-                )
+                text=f"Booking {booking.get('booking_reference', provided)} has been cancelled. You're always welcome to book again!"
             )
-            return []
-
-        if provided == stored:
+            return [SlotSet("booking_reference", None), SlotSet("booking_number", None)]
+        
+        # Fallback to in-memory slot if not found in storage
+        stored = (tracker.get_slot("booking_reference") or "").strip().upper()
+        if stored and provided == stored:
+            _delete_booking(provided)  # Try to delete anyway
             dispatcher.utter_message(
                 text=f"Booking {stored} has been cancelled. You're always welcome to book again!"
             )
@@ -649,11 +755,418 @@ class ActionCancelBooking(Action):
 
         dispatcher.utter_message(
             text=(
-                f"I couldn't match booking number {provided} to the reservation on file. "
+                f"I couldn't match booking number {provided} to any reservation. "
                 "Please verify the number and try again."
             )
         )
         return []
+
+
+class ValidateChangeBookingNumber(Action):
+    """Validate change booking number - only accept numbers, no letters."""
+    def name(self) -> Text:
+        return "validate_change_booking_number"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        latest_message = tracker.latest_message.get("text", "") if tracker.latest_message else ""
+        
+        if not change_booking_number:
+            dispatcher.utter_message(text="Please provide your booking number (numbers only, no letters).")
+            return []
+        
+        # Extract only numbers from the booking number (remove any letters or prefixes like "SA-")
+        import re
+        numbers_only = re.sub(r'[^0-9]', '', str(change_booking_number))
+        
+        if not numbers_only:
+            dispatcher.utter_message(text="Please provide your booking number using only numbers (no letters).")
+            return [SlotSet("change_booking_number", None)]
+        
+        # Always set the cleaned number (only digits) - even if it matches, ensure it's clean
+        if numbers_only != str(change_booking_number):
+            return [SlotSet("change_booking_number", numbers_only)]
+        
+        # Ensure the stored value is a string of digits only
+        if not str(change_booking_number).isdigit():
+            return [SlotSet("change_booking_number", numbers_only)]
+        
+        return []
+
+
+class ValidateChangeBookingEmail(Action):
+    """Validate change booking email."""
+    def name(self) -> Text:
+        return "validate_change_booking_email"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_email = tracker.get_slot("change_booking_email")
+        
+        if not change_booking_email:
+            dispatcher.utter_message(text="Please provide the email address associated with your booking.")
+            return []
+        
+        # Basic email validation
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, change_booking_email):
+            dispatcher.utter_message(text="Please provide a valid email address.")
+            return [SlotSet("change_booking_email", None)]
+        
+        return []
+
+
+class ActionVerifyBookingForChange(Action):
+    """Verify booking number and email before allowing date change."""
+    def name(self) -> Text:
+        return "action_verify_booking_for_change"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        change_booking_email = tracker.get_slot("change_booking_email")
+        
+        if not change_booking_number:
+            dispatcher.utter_message(text="Please provide your booking number (numbers only, no letters).")
+            return []
+        
+        if not change_booking_email:
+            dispatcher.utter_message(text="Please provide the email address associated with your booking.")
+            return []
+        
+        # Extract only numbers from provided booking number
+        numbers_only = re.sub(r'[^0-9]', '', str(change_booking_number))
+        
+        # Get booking from persistent storage
+        booking = _get_booking(change_booking_number)
+        
+        # Normalize emails for comparison
+        provided_email = (change_booking_email or "").lower().strip()
+        
+        if booking:
+            stored_email = (booking.get("email") or "").lower().strip()
+            stored_reference = booking.get("booking_reference", "")
+            
+            # Check if email matches
+            if provided_email == stored_email:
+                logger.info(f"✅ Booking verified: {stored_reference} with email {provided_email}")
+                dispatcher.utter_message(
+                    text=f"Booking verified. Please select your new arrival and departure dates."
+                )
+                # Update slots with booking data for date change
+                return [
+                    SlotSet("booking_reference", stored_reference),
+                    SlotSet("arrival_date", None),
+                    SlotSet("departure_date", None)
+                ]
+            else:
+                error_msg = "The email address doesn't match our records for this booking."
+                logger.warning(f"⚠️ Email mismatch: provided={provided_email}, stored={stored_email}")
+        else:
+            error_msg = "No booking found with that booking number."
+            logger.warning(f"⚠️ Booking not found: {change_booking_number}")
+        
+        dispatcher.utter_message(
+            text=(
+                f"{error_msg} "
+                "Please double-check and try again."
+            )
+        )
+        return [SlotSet("change_booking_number", None), SlotSet("change_booking_email", None)]
+
+
+class ActionVerifyBookingForChangeRoom(Action):
+    """Verify booking number and email before allowing room type change."""
+    def name(self) -> Text:
+        return "action_verify_booking_for_change_room"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        change_booking_email = tracker.get_slot("change_booking_email")
+        
+        if not change_booking_number:
+            dispatcher.utter_message(text="Please provide your booking number (numbers only, no letters).")
+            return []
+        
+        if not change_booking_email:
+            dispatcher.utter_message(text="Please provide the email address associated with your booking.")
+            return []
+        
+        # Extract only numbers from provided booking number
+        numbers_only = re.sub(r'[^0-9]', '', str(change_booking_number))
+        
+        # Get booking from persistent storage
+        booking = _get_booking(change_booking_number)
+        
+        # Normalize emails for comparison
+        provided_email = (change_booking_email or "").lower().strip()
+        
+        if booking:
+            stored_email = (booking.get("email") or "").lower().strip()
+            stored_reference = booking.get("booking_reference", "")
+            current_room_type = booking.get("room_type", "")
+            
+            # Check if email matches
+            if provided_email == stored_email:
+                logger.info(f"✅ Booking verified for room change: {stored_reference} with email {provided_email}")
+                dispatcher.utter_message(
+                    text=f"Booking verified. Your current room type is {current_room_type.capitalize()}. Which room type would you like? (standard or suite)"
+                )
+                # Update slots with booking data for room change
+                return [
+                    SlotSet("booking_reference", stored_reference),
+                    SlotSet("room_type", None)  # Clear to allow new selection
+                ]
+            else:
+                error_msg = "The email address doesn't match our records for this booking."
+                logger.warning(f"⚠️ Email mismatch: provided={provided_email}, stored={stored_email}")
+        else:
+            error_msg = "No booking found with that booking number."
+            logger.warning(f"⚠️ Booking not found: {change_booking_number}")
+        
+        dispatcher.utter_message(
+            text=(
+                f"{error_msg} "
+                "Please double-check and try again."
+            )
+        )
+        return [SlotSet("change_booking_number", None), SlotSet("change_booking_email", None)]
+
+
+class ActionChangeRoom(Action):
+    """Change the room type of a verified booking."""
+    def name(self) -> Text:
+        return "action_change_room"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        booking_reference = tracker.get_slot("booking_reference")
+        room_type = tracker.get_slot("room_type")
+        
+        if not room_type:
+            dispatcher.utter_message(text="Please select a room type (standard or suite).")
+            return []
+        
+        # Get booking reference (use change_booking_number if booking_reference not set)
+        ref_to_use = booking_reference or change_booking_number
+        
+        # Get booking from storage and update room type
+        booking = _get_booking(ref_to_use)
+        if booking:
+            old_room_type = booking.get("room_type", "")
+            booking["room_type"] = room_type
+            booking["updated_at"] = datetime.now().isoformat()
+            _save_booking(booking.get("booking_reference", ref_to_use), booking)
+            logger.info(f"Booking {ref_to_use} room type updated from {old_room_type} to {room_type}")
+        
+        # Format room type
+        room_type_display = "Standard" if room_type == "standard" else "Suite" if room_type == "suite" else room_type.capitalize()
+        
+        dispatcher.utter_message(
+            text=(
+                f"Your room type has been updated successfully.\n\n"
+                f"Booking Number: {ref_to_use}\n"
+                f"New Room Type: {room_type_display}\n\n"
+                f"Your booking reference remains the same. Please keep it handy for any further changes or cancellations."
+            )
+        )
+        
+        # Clear change slots
+        return [
+            SlotSet("room_type", room_type),
+            SlotSet("change_booking_number", None),
+            SlotSet("change_booking_email", None)
+        ]
+
+
+class ActionVerifyBookingForChangeGuests(Action):
+    """Verify booking number and email before allowing guests change."""
+    def name(self) -> Text:
+        return "action_verify_booking_for_change_guests"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        change_booking_email = tracker.get_slot("change_booking_email")
+        
+        if not change_booking_number:
+            dispatcher.utter_message(text="Please provide your booking number (numbers only, no letters).")
+            return []
+        
+        if not change_booking_email:
+            dispatcher.utter_message(text="Please provide the email address associated with your booking.")
+            return []
+        
+        # Extract only numbers from provided booking number
+        numbers_only = re.sub(r'[^0-9]', '', str(change_booking_number))
+        
+        # Get booking from persistent storage
+        booking = _get_booking(change_booking_number)
+        
+        # Normalize emails for comparison
+        provided_email = (change_booking_email or "").lower().strip()
+        
+        if booking:
+            stored_email = (booking.get("email") or "").lower().strip()
+            stored_reference = booking.get("booking_reference", "")
+            current_guests = booking.get("guests", "")
+            
+            # Check if email matches
+            if provided_email == stored_email:
+                logger.info(f"✅ Booking verified for guests change: {stored_reference} with email {provided_email}")
+                dispatcher.utter_message(
+                    text=f"Booking verified. Your current number of guests is {current_guests}. For how many guests would you like to update your booking?"
+                )
+                # Update slots with booking data for guests change
+                return [
+                    SlotSet("booking_reference", stored_reference),
+                    SlotSet("guests", None)  # Clear to allow new selection
+                ]
+            else:
+                error_msg = "The email address doesn't match our records for this booking."
+                logger.warning(f"⚠️ Email mismatch: provided={provided_email}, stored={stored_email}")
+        else:
+            error_msg = "No booking found with that booking number."
+            logger.warning(f"⚠️ Booking not found: {change_booking_number}")
+        
+        dispatcher.utter_message(
+            text=(
+                f"{error_msg} "
+                "Please double-check and try again."
+            )
+        )
+        return [SlotSet("change_booking_number", None), SlotSet("change_booking_email", None)]
+
+
+class ActionChangeGuests(Action):
+    """Change the number of guests of a verified booking."""
+    def name(self) -> Text:
+        return "action_change_guests"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        booking_reference = tracker.get_slot("booking_reference")
+        guests = tracker.get_slot("guests")
+        
+        if not guests:
+            dispatcher.utter_message(text="Please provide the number of guests.")
+            return []
+        
+        # Get booking reference (use change_booking_number if booking_reference not set)
+        ref_to_use = booking_reference or change_booking_number
+        
+        # Get booking from storage and update guests
+        booking = _get_booking(ref_to_use)
+        if booking:
+            old_guests = booking.get("guests", "")
+            booking["guests"] = guests
+            booking["updated_at"] = datetime.now().isoformat()
+            _save_booking(booking.get("booking_reference", ref_to_use), booking)
+            logger.info(f"Booking {ref_to_use} guests updated from {old_guests} to {guests}")
+        
+        dispatcher.utter_message(
+            text=(
+                f"Your number of guests has been updated successfully.\n\n"
+                f"Booking Number: {ref_to_use}\n"
+                f"New Number of Guests: {guests}\n\n"
+                f"Your booking reference remains the same. Please keep it handy for any further changes or cancellations."
+            )
+        )
+        
+        # Clear change slots
+        return [
+            SlotSet("guests", guests),
+            SlotSet("change_booking_number", None),
+            SlotSet("change_booking_email", None)
+        ]
+
+
+class ActionChangeDate(Action):
+    """Change the dates of a verified booking."""
+    def name(self) -> Text:
+        return "action_change_date"
+
+    def run(
+        self,
+        dispatcher: CollectingDispatcher,
+        tracker: Tracker,
+        domain: Dict[Text, Any],
+    ) -> List[Dict[Text, Any]]:
+        change_booking_number = tracker.get_slot("change_booking_number")
+        booking_reference = tracker.get_slot("booking_reference")
+        arrival_date = tracker.get_slot("arrival_date")
+        departure_date = tracker.get_slot("departure_date")
+        
+        if not arrival_date or not departure_date:
+            dispatcher.utter_message(text="Please provide both arrival and departure dates.")
+            return []
+        
+        # Get booking reference (use change_booking_number if booking_reference not set)
+        ref_to_use = booking_reference or change_booking_number
+        
+        # Get booking from storage and update dates
+        booking = _get_booking(ref_to_use)
+        if booking:
+            booking["arrival_date"] = arrival_date
+            booking["departure_date"] = departure_date
+            booking["updated_at"] = datetime.now().isoformat()
+            _save_booking(booking.get("booking_reference", ref_to_use), booking)
+            logger.info(f"Booking {ref_to_use} dates updated in storage")
+        
+        # Format dates nicely
+        arrival_formatted = arrival_date if arrival_date else "N/A"
+        departure_formatted = departure_date if departure_date else "N/A"
+        
+        dispatcher.utter_message(
+            text=(
+                f"Your booking dates have been updated successfully.\n\n"
+                f"Booking Number: {ref_to_use}\n"
+                f"New Arrival Date: {arrival_formatted}\n"
+                f"New Departure Date: {departure_formatted}\n\n"
+                f"Your booking reference remains the same. Please keep it handy for any further changes or cancellations."
+            )
+        )
+        
+        # Update the stored dates
+        return [
+            SlotSet("arrival_date", arrival_date),
+            SlotSet("departure_date", departure_date),
+            SlotSet("change_booking_number", None),
+            SlotSet("change_booking_email", None)
+        ]
 
 
 class ActionAnswerFacilityQuestion(Action):
@@ -989,11 +1502,12 @@ class ValidateRoomType(Action):
 
         # SECOND: Check if it's a valid room type selection (standard or suite)
         # This must come BEFORE checking if it's a question, otherwise "standard" gets treated as a question
-        if "standard" in latest_lower and len(latest_lower.split()) <= 2:
-            # Simple selection like "standard" or "standard room"
+        # Accept "standard" even in longer messages (e.g., "I want standard", "standard please")
+        if "standard" in latest_lower and "suite" not in latest_lower:
+            # Selection like "standard", "standard room", "I want standard", etc.
             return [SlotSet("room_type", "standard")]
-        elif "suite" in latest_lower and len(latest_lower.split()) <= 2:
-            # Simple selection like "suite" or "suite room"
+        elif "suite" in latest_lower:
+            # Selection like "suite", "suite room", "I want suite", etc.
             return [SlotSet("room_type", "suite")]
 
         # Get the slot value (might be set by LLM mapping)
@@ -1029,12 +1543,18 @@ class ValidateRoomType(Action):
             # If it's a question but not a facility question, clear the slot
             return [SlotSet("room_type", None)]
 
-        # If no room_type slot and not a facility question, it's invalid
+        # If no room_type slot and not a facility question, check one more time if message contains room type keywords
         if not room_type:
-            dispatcher.utter_message(
-                text="I didn't understand that. Please choose either 'standard' or 'suite'."
-            )
-            return [SlotSet("room_type", None)]
+            # Last attempt: check if message contains room type keywords (case-insensitive, anywhere in message)
+            if "standard" in latest_lower and "suite" not in latest_lower:
+                return [SlotSet("room_type", "standard")]
+            elif "suite" in latest_lower:
+                return [SlotSet("room_type", "suite")]
+            else:
+                dispatcher.utter_message(
+                    text="I didn't understand that. Please choose either 'standard' or 'suite'."
+                )
+                return [SlotSet("room_type", None)]
 
         return []
 
@@ -1567,7 +2087,22 @@ Your booking reference is {booking_reference}. Please keep it handy for payments
             
             dispatcher.utter_message(text=summary)
             
-            # Store booking reference for later cancellation
+            # Save booking to persistent storage
+            booking_data = {
+                "booking_reference": booking_reference,
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email.lower().strip() if email else None,
+                "guests": guests,
+                "room_type": room_type,
+                "arrival_date": arrival_date,
+                "departure_date": departure_date,
+                "payment_option": payment_option,
+                "created_at": datetime.now().isoformat()
+            }
+            _save_booking(booking_reference, booking_data)
+            logger.info(f"Booking {booking_reference} saved to persistent storage")
+            
             return [SlotSet("booking_reference", booking_reference)]
         
         return []

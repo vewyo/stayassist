@@ -14,6 +14,9 @@ models/
 .config/
 .keras/
 prompts/
+
+# Bookings storage
+data/bookings.json
 tests/
 qdrant_storage/
 

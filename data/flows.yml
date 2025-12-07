@@ -35,6 +35,42 @@ flows:
       - collect: booking_number
         description: "ask for the booking number the guest wants to cancel"
       - action: action_cancel_booking
+  change_date:
+    description: Allow guests to change or modify the dates of an existing reservation. This flow is triggered when users ask to change dates, modify booking dates, update reservation dates, change arrival date, change departure date, or modify dates. Requires booking number (numbers only, no letters) and email for verification.
+    steps:
+      - collect: change_booking_number
+        description: "ask for the booking number (numbers only, no letters)"
+      - collect: change_booking_email
+        description: "ask for the email address associated with the booking"
+      - action: action_verify_booking_for_change
+      - action: action_show_booking_calendar
+      - collect: arrival_date
+        description: "ask for the new arrival date using calendar widget"
+      - collect: departure_date
+        description: "ask for the new departure date using calendar widget (must be after arrival date)"
+      - action: action_change_date
+  change_room:
+    description: Allow guests to change or modify the room type of an existing reservation. This flow is triggered when users ask to change room, modify room type, update room, change to suite, change to standard, or switch room. Requires booking number (numbers only, no letters) and email for verification.
+    steps:
+      - collect: change_booking_number
+        description: "ask for the booking number (numbers only, no letters)"
+      - collect: change_booking_email
+        description: "ask for the email address associated with the booking"
+      - action: action_verify_booking_for_change_room
+      - collect: room_type
+        description: "ask which room type the guest wants (standard or suite)"
+      - action: action_change_room
+  change_guests:
+    description: Allow guests to change or modify the number of guests of an existing reservation. This flow is triggered when users ask to change guests, modify number of guests, update guests, change to X guests, or change to X people. Requires booking number (numbers only, no letters) and email for verification.
+    steps:
+      - collect: change_booking_number
+        description: "ask for the booking number (numbers only, no letters)"
+      - collect: change_booking_email
+        description: "ask for the email address associated with the booking"
+      - action: action_verify_booking_for_change_guests
+      - collect: guests
+        description: "ask for the number of guests, convert words to numbers, handle invalid numbers"
+      - action: action_change_guests
   facility_information:
     description: Provide fixed information about on-site facilities such as pool hours, parking, and meals.
     steps:
