@@ -73,6 +73,39 @@ REM Start Flask (in another terminal)
 start "Flask Server" cmd /k "python app.py"
 ```
 
+## 🎤 Natural Voice (ElevenLabs) - Optional
+
+The chatbot uses **ElevenLabs** for ultra-natural, human-like voice synthesis. If you want to use this feature:
+
+1. **Get an ElevenLabs API Key:**
+   - Sign up at [elevenlabs.io](https://elevenlabs.io)
+   - Get your API key from the dashboard
+   - Free tier includes 10,000 characters/month
+
+2. **Set Environment Variable:**
+   
+   **Mac/Linux:**
+   ```bash
+   export ELEVENLABS_API_KEY="your-api-key-here"
+   export ELEVENLABS_VOICE_ID="EXAVITQu4vr4xnSDxMaL"  # Optional: Default is "Bella" (natural female voice)
+   ```
+   
+   **Windows (Command Prompt):**
+   ```cmd
+   set ELEVENLABS_API_KEY=your-api-key-here
+   set ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+   ```
+   
+   **Windows (PowerShell):**
+   ```powershell
+   $env:ELEVENLABS_API_KEY="your-api-key-here"
+   $env:ELEVENLABS_VOICE_ID="EXAVITQu4vr4xnSDxMaL"
+   ```
+
+3. **Start the servers** (the voice service will automatically be used if the API key is set)
+
+**Note:** If no API key is set, the chatbot will automatically fall back to browser-based text-to-speech (still optimized for natural female voices).
+
 ## 📋 Detailed Instructions
 
 ### 1. Activate Virtual Environment

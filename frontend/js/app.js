@@ -20,10 +20,10 @@ function toggleSpeechRecognition() {
 speakTextQueue = [];
 
 /**
- * Speak text using text-to-speech
+ * Speak text using external voice service (ElevenLabs) or browser TTS as fallback
  * @param {string} text - Text to be spoken
  */
-function speakText(text) {
+async function speakText(text) {
     if (isSpeaking) {
         speakTextQueue.push(text);
         return;
@@ -43,6 +43,56 @@ function speakText(text) {
     // Clean text of HTML tags
     const cleanText = text.replace(/<[^>]*>?/gm, '');
     
+    try {
+        // Try to use external voice service (ElevenLabs) first
+        const response = await fetch('/api/text-to-speech', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: cleanText })
+        });
+        
+        const data = await response.json();
+        
+        if (data.audio && data.provider === 'elevenlabs') {
+            // Use ElevenLabs audio (natural voice)
+            const audio = new Audio(`data:audio/${data.format};base64,${data.audio}`);
+            
+            audio.onended = () => {
+                isSpeaking = false;
+                if (speakTextQueue.length > 0) {
+                    const nextText = speakTextQueue.shift();
+                    speakText(nextText);
+                }
+            };
+            
+            audio.onerror = (event) => {
+                console.error('Audio playback error', event);
+                isSpeaking = false;
+                // Fallback to browser TTS
+                useBrowserTTS(cleanText);
+            };
+            
+            console.log('Using ElevenLabs natural voice');
+            audio.play();
+            return;
+        } else {
+            // Fallback to browser TTS
+            useBrowserTTS(cleanText);
+        }
+    } catch (error) {
+        console.error('Error calling voice service:', error);
+        // Fallback to browser TTS
+        useBrowserTTS(cleanText);
+    }
+}
+
+/**
+ * Use browser TTS as fallback
+ * @param {string} cleanText - Clean text to speak
+ */
+function useBrowserTTS(cleanText) {
     // Create a new utterance
     const utterance = new SpeechSynthesisUtterance(cleanText);
     
@@ -52,7 +102,6 @@ function speakText(text) {
     let preferredVoice = null;
     
     // Priority 1: Most natural FEMALE human-sounding voices (best quality)
-    // These female voices sound most like real humans
     preferredVoice = voices.find(voice => 
         (voice.name.includes('Samantha') && voice.lang.startsWith('en')) ||  // macOS - very natural female
         (voice.name.includes('Karen') && voice.lang.startsWith('en')) ||     // macOS - natural female
@@ -62,9 +111,7 @@ function speakText(text) {
         (voice.name.includes('Moira') && voice.lang.startsWith('en')) ||     // macOS - natural female
         (voice.name.includes('Kate') && voice.lang.startsWith('en')) ||      // macOS - natural female
         (voice.name.includes('Google') && voice.name.includes('US') && (voice.name.includes('Neural') || voice.name.includes('Wavenet')) && (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))) || // Google Neural/Wavenet female
-        (voice.name.includes('Microsoft') && (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny'))) || // Microsoft natural female voices
-        (voice.name.includes('Amazon Polly') && (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))) || // AWS Polly female
-        (voice.name.includes('ElevenLabs') && (voice.gender === 'female' || voice.name.toLowerCase().includes('female')))   // ElevenLabs female
+        (voice.name.includes('Microsoft') && (voice.name.includes('Zira') || voice.name.includes('Aria') || voice.name.includes('Jenny'))) // Microsoft natural female voices
     );
     
     // Priority 2: Any Neural/Premium FEMALE voices (very natural)
@@ -92,15 +139,7 @@ function speakText(text) {
         );
     }
     
-    // Priority 5: Any Google FEMALE voice (fallback)
-    if (!preferredVoice) {
-        preferredVoice = voices.find(voice => 
-            voice.name.includes('Google') &&
-            (voice.gender === 'female' || voice.name.toLowerCase().includes('female'))
-        );
-    }
-    
-    // Priority 6: Any US English FEMALE voice (explicitly female)
+    // Priority 5: Any US English FEMALE voice (explicitly female)
     if (!preferredVoice) {
         preferredVoice = voices.find(voice => 
             voice.lang.startsWith('en-US') && 
@@ -109,18 +148,9 @@ function speakText(text) {
         );
     }
     
-    // Priority 7: macOS default female voices (last resort for female)
-    if (!preferredVoice) {
-        preferredVoice = voices.find(voice => 
-            voice.lang.startsWith('en') && 
-            (voice.name.includes('Samantha') || voice.name.includes('Karen') || voice.name.includes('Victoria') || 
-             voice.name.includes('Fiona') || voice.name.includes('Tessa') || voice.name.includes('Moira'))
-        );
-    }
-    
     if (preferredVoice) {
         utterance.voice = preferredVoice;
-        console.log('Using FEMALE voice:', preferredVoice.name, preferredVoice.lang, 'Gender:', preferredVoice.gender);
+        console.log('Using browser FEMALE voice:', preferredVoice.name, preferredVoice.lang, 'Gender:', preferredVoice.gender);
     } else {
         console.warn('No preferred FEMALE voice found, using default');
     }
@@ -132,7 +162,7 @@ function speakText(text) {
     utterance.volume = 0.92; // Softer volume (0.92) - gentle, less robotic, more intimate
     
     utterance.onstart = () => {
-        console.log('Speaking with voice:', utterance.voice ? utterance.voice.name : 'Default voice');
+        console.log('Speaking with browser voice:', utterance.voice ? utterance.voice.name : 'Default voice');
     };
     
     utterance.onend = () => {

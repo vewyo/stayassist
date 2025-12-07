@@ -501,9 +501,90 @@ def process_rasa_response(response, original_context):
     logger.info(f"Processed result: {json.dumps(result, indent=2)}")
     return result
 
+@app.route('/api/text-to-speech', methods=['POST'])
+def text_to_speech():
+    """
+    Convert text to speech using ElevenLabs API (or fallback to browser TTS).
+    Returns audio data or instructions for browser TTS.
+    """
+    try:
+        data = request.get_json()
+        text = data.get('text', '')
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Clean text of HTML tags
+        import re
+        clean_text = re.sub(r'<[^>]*>?', '', text)
+        
+        # Get ElevenLabs API key from environment variable
+        elevenlabs_api_key = os.environ.get('ELEVENLABS_API_KEY')
+        elevenlabs_voice_id = os.environ.get('ELEVENLABS_VOICE_ID', 'EXAVITQu4vr4xnSDxMaL')  # Default: natural female voice "Bella"
+        
+        if elevenlabs_api_key:
+            # Use ElevenLabs API for natural voice
+            try:
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{elevenlabs_voice_id}"
+                headers = {
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "xi-api-key": elevenlabs_api_key
+                }
+                data = {
+                    "text": clean_text,
+                    "model_id": "eleven_multilingual_v2",  # Natural, multilingual model
+                    "voice_settings": {
+                        "stability": 0.5,      # Natural variation
+                        "similarity_boost": 0.75,  # Voice similarity
+                        "style": 0.0,          # Neutral style
+                        "use_speaker_boost": True  # Enhanced clarity
+                    }
+                }
+                
+                response = requests.post(url, json=data, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    # Return audio data as base64
+                    import base64
+                    audio_base64 = base64.b64encode(response.content).decode('utf-8')
+                    return jsonify({
+                        'audio': audio_base64,
+                        'format': 'mp3',
+                        'provider': 'elevenlabs'
+                    })
+                else:
+                    logger.warning(f"ElevenLabs API error: {response.status_code} - {response.text}")
+                    # Fallback to browser TTS
+                    return jsonify({
+                        'text': clean_text,
+                        'provider': 'browser',
+                        'fallback': True
+                    })
+            except Exception as e:
+                logger.error(f"ElevenLabs API error: {e}")
+                # Fallback to browser TTS
+                return jsonify({
+                    'text': clean_text,
+                    'provider': 'browser',
+                    'fallback': True
+                })
+        else:
+            # No API key, use browser TTS
+            return jsonify({
+                'text': clean_text,
+                'provider': 'browser',
+                'fallback': True
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in text-to-speech: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     logger.info(f"Chatbot server running on http://localhost:{port}")
     logger.info("To use with Rasa, make sure to start the Rasa server with:")
     logger.info("  - rasa run --enable-api --cors \"*\"")
+    logger.info("To use ElevenLabs for natural voices, set ELEVENLABS_API_KEY environment variable")
     app.run(debug=True, port=port, host='0.0.0.0')
