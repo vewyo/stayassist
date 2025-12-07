@@ -35,7 +35,19 @@ An intelligent chatbot for hotel bookings built with Rasa Pro and Flask.
 ./train_and_run.sh
 ```
 
-**Windows (using Command Prompt/PowerShell):**
+**Windows (using Command Prompt/PowerShell - EASIEST):**
+```cmd
+REM Stop everything (if servers are running)
+stop.bat
+
+REM Start everything
+start.bat
+
+REM Train and then start
+train_and_run.bat
+```
+
+**Windows (Manual - Command Prompt/PowerShell):**
 ```cmd
 REM Stop everything
 taskkill /F /IM python.exe /FI "WINDOWTITLE eq rasa*" 2>nul
@@ -155,13 +167,18 @@ REM Then start manually (see Option B above)
 ./stop.sh
 ```
 
-**Windows (Command Prompt):**
+**Windows (EASIEST - using batch file):**
+```cmd
+stop.bat
+```
+
+**Windows (Command Prompt - manual):**
 ```cmd
 taskkill /F /IM python.exe /FI "WINDOWTITLE eq rasa*" 2>nul
 taskkill /F /IM python.exe /FI "WINDOWTITLE eq app.py*" 2>nul
 ```
 
-**Windows (PowerShell):**
+**Windows (PowerShell - manual):**
 ```powershell
 Get-Process python | Where-Object {$_.CommandLine -like "*rasa*"} | Stop-Process -Force
 Get-Process python | Where-Object {$_.CommandLine -like "*app.py*"} | Stop-Process -Force
@@ -193,9 +210,12 @@ stayassist/
 │   ├── index.html
 │   ├── css/
 │   └── js/
-├── start.sh             # Start everything (simple)
-├── stop.sh              # Stop everything (simple)
-├── train_and_run.sh     # Train and start
+├── start.sh             # Start everything (Mac/Linux/Git Bash)
+├── start.bat            # Start everything (Windows)
+├── stop.sh              # Stop everything (Mac/Linux/Git Bash)
+├── stop.bat             # Stop everything (Windows)
+├── train_and_run.sh     # Train and start (Mac/Linux/Git Bash)
+├── train_and_run.bat    # Train and start (Windows)
 └── run.sh               # Legacy run script
 
 ```
