@@ -2352,6 +2352,14 @@ class ValidateGuests(Action):
             )
             return [SlotSet("guests", None)]
         
+        # Successfully validated guests - now ask for room type to continue the flow
+        # Check if room_type is not set yet, and if so, ask for it immediately
+        room_type = tracker.get_slot("room_type")
+        if not room_type:
+            # Ask for room type to continue the booking flow
+            dispatcher.utter_message(text="Which room would you like? (standard or suite)")
+        
+        # Set the validated guests slot
         return [SlotSet("guests", str(int(parsed_value)))]
 
 
