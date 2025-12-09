@@ -1919,7 +1919,7 @@ class ValidatePaymentOption(Action):
         payment_option_lower = str(payment_option).lower().strip()
 
         # Normalize payment option
-        if any(word in payment_option_lower for word in ["desk", "front desk", "at desk", "reception", "counter"]):
+        if any(word in payment_option_lower for word in ["desk", "front desk", "at desk", "reception", "counter", "cash", "in cash", "pay cash", "cash payment"]):
             # Check if we already have name and email - if so, show summary
             first_name = tracker.get_slot("first_name")
             last_name = tracker.get_slot("last_name")
