@@ -313,7 +313,7 @@ def _is_facility_question(message: str) -> Tuple[bool, Optional[str]]:
     facility_keywords = {
         "pool": "The pool is open daily from 07:30 to 18:00.",
         "parking": "Parking is available for €5 per 24 hours.",
-        "breakfast": "Breakfast is available daily.",
+        "breakfast": "Breakfast is served daily from 07:00 to 10:00.",
         "lunch": "Lunch is served daily from 12:00 to 14:00.",
         "dinner": "Dinner is served daily from 18:00 to 21:00.",
         "gym": "Our gym is open 24/7 and includes cardio equipment and free weights.",
