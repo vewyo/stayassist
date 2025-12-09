@@ -833,6 +833,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
                 
+                // Check if the last user message is a number (likely answering "for how many guests" or similar)
+                if (lastUserMessage.length > 0) {
+                    const lastText = lastUserMessage[lastUserMessage.length - 1].textContent.trim();
+                    // Check if it's just a number (1-20) - likely answering a booking question
+                    const isNumber = /^\d+$/.test(lastText) && parseInt(lastText) >= 1 && parseInt(lastText) <= 20;
+                    if (isNumber) {
+                        // Don't show fallback for numbers - Rasa is processing it
+                        console.log('Number detected, skipping fallback message - waiting for Rasa response');
+                        return;
+                    }
+                }
+                
                 // Check the last user message to see if it's a greeting
                 if (lastUserMessage.length > 0) {
                     const lastText = lastUserMessage[lastUserMessage.length - 1].textContent.toLowerCase().trim();
