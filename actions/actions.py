@@ -313,7 +313,7 @@ def _is_facility_question(message: str) -> Tuple[bool, Optional[str]]:
     facility_keywords = {
         "pool": "The pool is open daily from 07:30 to 18:00.",
         "parking": "Parking is available for €5 per 24 hours.",
-        "breakfast": "Breakfast is served daily from 07:00 to 10:00.",
+        "breakfast": "Breakfast is available daily.",
         "lunch": "Lunch is served daily from 12:00 to 14:00.",
         "dinner": "Dinner is served daily from 18:00 to 21:00.",
         "gym": "Our gym is open 24/7 and includes cardio equipment and free weights.",
@@ -1201,7 +1201,7 @@ class ActionAnswerFacilityQuestion(Action):
         info_map = {
             "pool": "The pool is open daily from 07:30 to 18:00.",
             "parking": "Parking is available for €5 per 24 hours.",
-            "breakfast": "Breakfast is served from 07:00 to 11:00.",
+            "breakfast": "Breakfast is available daily.",
             "lunch": "Lunch is available from 13:00 to 15:00.",
             "dinner": "Dinner service runs from 18:00 to 20:00.",
             "gym": "The gym is open 24 hours a day.",
@@ -1220,7 +1220,7 @@ class ActionAnswerFacilityQuestion(Action):
             response = (
                 "Here's a quick overview: "
                 f"{room_summary} Pool 07:30-18:00, parking €5/24h, "
-                "breakfast 07:00-11:00, lunch 13:00-15:00, dinner 18:00-20:00, gym 24/7. "
+                "breakfast available daily, lunch 13:00-15:00, dinner 18:00-20:00, gym 24/7. "
                 "Let me know if you need details on anything else."
             )
 
