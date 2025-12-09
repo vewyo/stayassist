@@ -1201,7 +1201,7 @@ class ActionAnswerFacilityQuestion(Action):
         info_map = {
             "pool": "The pool is open daily from 07:30 to 18:00.",
             "parking": "Parking is available for €5 per 24 hours.",
-            "breakfast": "Breakfast is available daily.",
+            "breakfast": "Breakfast is served daily from 07:00 to 10:00.",
             "lunch": "Lunch is available from 13:00 to 15:00.",
             "dinner": "Dinner service runs from 18:00 to 20:00.",
             "gym": "The gym is open 24 hours a day.",
@@ -1220,7 +1220,7 @@ class ActionAnswerFacilityQuestion(Action):
             response = (
                 "Here's a quick overview: "
                 f"{room_summary} Pool 07:30-18:00, parking €5/24h, "
-                "breakfast available daily, lunch 13:00-15:00, dinner 18:00-20:00, gym 24/7. "
+                "breakfast 07:00-10:00, lunch 13:00-15:00, dinner 18:00-20:00, gym 24/7. "
                 "Let me know if you need details on anything else."
             )
 
