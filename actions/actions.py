@@ -1564,8 +1564,12 @@ class ValidateRoomType(Action):
             elif "suite" in latest_lower:
                 return [SlotSet("room_type", "suite")]
             else:
+                # Provide helpful guidance and ask again
                 dispatcher.utter_message(
                     text="I didn't understand that. Please choose either 'standard' or 'suite'."
+                )
+                dispatcher.utter_message(
+                    text="Which room would you like? (standard or suite)"
                 )
                 return [SlotSet("room_type", None)]
 
