@@ -659,20 +659,34 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Filter out "What else can I help you with?" after booking summaries
+        // Filter out "What else can I help you with?" after booking summaries OR facility questions during booking
         const bookingSummaryIndicators = ["booking reference", "booking summary", "your booking reference is"];
+        const facilityIndicators = ["breakfast", "pool", "parking", "gym", "lunch", "dinner", "is served", "is open", "is available"];
+        const bookingFlowIndicators = ["for how many guests", "which room", "arrival", "departure", "payment", "front desk", "online"];
+        
         const hasBookingSummary = allMessages.some(msg => {
             const msgLower = msg.toLowerCase();
             return bookingSummaryIndicators.some(indicator => msgLower.includes(indicator));
         });
-        if (hasBookingSummary) {
+        
+        const hasFacilityQuestion = allMessages.some(msg => {
+            const msgLower = msg.toLowerCase();
+            return facilityIndicators.some(indicator => msgLower.includes(indicator));
+        });
+        
+        const inBookingFlow = allMessages.some(msg => {
+            const msgLower = msg.toLowerCase();
+            return bookingFlowIndicators.some(indicator => msgLower.includes(indicator));
+        });
+        
+        if (hasBookingSummary || (hasFacilityQuestion && inBookingFlow)) {
             allMessages = allMessages.filter(msg => {
                 const msgLower = msg.toLowerCase();
                 const isHelpMessage = msgLower.includes("what else can i help") || 
                                     msgLower.includes("how can i assist") || 
                                     msgLower.includes("how can i help");
                 if (isHelpMessage) {
-                    console.log('🚫 Frontend: Filtered "What else can I help" after booking summary:', msg);
+                    console.log('🚫 Frontend: Filtered "What else can I help" after booking summary or facility question:', msg);
                     return false;
                 }
                 return true;

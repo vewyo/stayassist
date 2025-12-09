@@ -403,13 +403,21 @@ def process_rasa_response(response, original_context):
                     logger.info(f"🚫 FILTERING FALLBACK (information_sufficient == asked): {text}")
                     continue
                 
-                # Filter "What else can I help you with?" after booking summaries
-                if "what else can i help" in text_lower or "how can i assist" in text_lower:
+                # Filter "What else can I help you with?" after booking summaries OR facility questions during booking
+                if "what else can i help" in text_lower or "how can i assist" in text_lower or "how can i help" in text_lower:
                     # Check if previous messages contain booking summary indicators
                     previous_messages = ' '.join([msg.get("text", "") for msg in result["messages"]])
                     if "booking reference" in previous_messages.lower() or "booking summary" in previous_messages.lower():
                         logger.info(f"🚫 FILTERING 'What else can I help' after booking summary: {text}")
                         continue
+                    # Also filter if we're in a booking flow (after facility questions like breakfast, pool, etc.)
+                    facility_indicators = ["breakfast", "pool", "parking", "gym", "lunch", "dinner", "is served", "is open", "is available"]
+                    if any(indicator in previous_messages.lower() for indicator in facility_indicators):
+                        # Check if we're in booking flow (guests, room, date, payment questions)
+                        booking_indicators = ["for how many guests", "which room", "arrival", "departure", "payment", "front desk", "online"]
+                        if any(indicator in previous_messages.lower() for indicator in booking_indicators):
+                            logger.info(f"🚫 FILTERING 'What else can I help' after facility question during booking: {text}")
+                            continue
                 
                 # Filter duplicate messages (exact match)
                 if text_normalized in seen_messages:
