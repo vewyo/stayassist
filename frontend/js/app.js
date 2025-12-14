@@ -271,13 +271,9 @@ document.addEventListener('DOMContentLoaded', () => {
             isListening = false;
             micButton.classList.remove('listening');
             voiceIndicator.style.display = 'none';
-            
-            // If we have content, send after a short delay to allow user to see what was recognized
-            if (chatInput.value.trim()) {
-                setTimeout(() => {
-                    sendMessage();
-                }, 1000);
-            }
+
+            // Text is now in the input field, user can review and click send manually
+            // No automatic sending - user has full control
         };
 
         recognition.onerror = (event) => {
