@@ -33,3 +33,7 @@ echo    - Chatbot: http://localhost:5001
 echo.
 echo Close the server windows to stop them, or run stop.bat
 pause
+
+
+
+

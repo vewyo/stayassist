@@ -27,7 +27,7 @@ class ActionAskGuests(Action):
             return []
         
         # Only ask for guests if information_sufficient is NOT being handled
-        dispatcher.utter_message(text="For how many guests?")
+            dispatcher.utter_message(text="For how many guests?")
         return []
 
 
