@@ -149,7 +149,7 @@ def send_message():
     data = request.json
     message = data.get('message')
     context = data.get('context', {})
-    
+
     logger.info(f"🔵 Received message: '{message}', context sender_id: {context.get('sender_id', 'user')}")
     
     # SECURITY: Check if message is hotel-related
